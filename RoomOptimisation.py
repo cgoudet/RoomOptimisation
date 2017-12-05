@@ -65,18 +65,25 @@ def CreateOfficeData( nOffice=12, properties = {} ) :
 
 #==========
 def GetCountPerOfficeProp( placements, officeData, persoData, officeTags=['roomID'], persoTags=['service'], officeVal='isLeft', persoVal='isTall') :
+    """
+    Return the number of occurences of persons with a given property (personTag) in offices with another property (officeTag)
+    """
     persoFilter = pd.pivot_table(persoData, values=persoVal, columns=persoTags, index=persoData.index, aggfunc='count').fillna(0).values.T
     officeFilter = pd.pivot_table(officeData, values=officeVal, columns=officeTags, index=officeData.index, aggfunc='count').fillna(0).values
     return np.dot( np.dot(persoFilter, placements), officeFilter )
 
 #==========
 def GetPropMatching( placement, officeData, persoData, properties ) :
+    """
+    Return the weighted agreement between persons preferences and office characteristics
+    """
     keys, vals = zip(*properties.items())
-        
-    persoProp = persoData.loc[:, keys]
-    persoProp = np.dot( persoProp, np.diag(vals) ).T
+    persoProp = np.dot( persoData.loc[:, keys], np.diag(vals) )
     officeProp = officeData.loc[:,keys].values
-    return np.dot( np.dot( persoProp, placement), officeProp)
+
+    result = np.multiply(persoProp, np.dot(placement, officeProp))
+
+    return result
 
 #==========
 def PrintOptimResults( placement, persoData, officeData, spatialProps ) :
@@ -91,24 +98,16 @@ def PrintOptimResults( placement, persoData, officeData, spatialProps ) :
                 resultFrame.loc[iPerso, 'office'] = iRoom
                 x[iPerso][iRoom]=1
     
-    #Calcul du happyness par personne
-    keys, vals = zip(*spatialProps.items())
-    persoProp = persoData.loc[:, keys]
-    persoProp = np.dot( persoProp, np.diag(vals) )    
-    givenProperties = np.dot(x, officeData.loc[:,keys].values )  
-    resultFrame['happy'] = np.multiply(persoProp,givenProperties).sum(axis=1)
+    happyness = GetPropMatching( x, officeData, persoData, spatialProps)
+    print('happyness : ', happyness)
+    resultFrame['happy'] = happyness.sum(axis=1)
     
     print('Attributions Bureaux')
     for row in resultFrame.itertuples() :
         print( '%s is given office %i with happyness %2.2f' % (row.Nom,row.office, row.happy))
         
     print( 'total happyness : ', resultFrame['happy'].sum())
-    print(persoData.loc[:, ['service']])
-    print(officeData.loc[:,['etage', 'roomID']].sort_values(['etage', 'roomID']))
-    print('delta :', GetCountPerOfficeProp( x, officeData, persoData, officeTags=['etage', 'roomID'], persoTags=['service'] ))
-    print(pd.pivot_table(officeData, values='isLeft', index=['etage', 'roomID'], aggfunc='count'))
-    
-    
+
 #==========
 def main() :
     np.random.seed(12435)
@@ -140,6 +139,10 @@ def main() :
     #officeOccupancy_ij = 1 iif person i is seated in office j.
     # Conditions must be imposed on the sum of lines and columns to ensure a unique seat for a person and a unique person on each office.
     officeOccupancy = pulp.LpVariable.matrix("officeOccupancy" ,(list(persoData.index), list(officeData.index)),cat='Binary')
+    
+    #Create the minimum and maximum happyness as variables
+    minHappy=pulp.LpVariable("minHappy",None,None,cat='Continuous')
+    maxHappy=pulp.LpVariable("maxHappy",None,None,cat='Continuous')
     
     # delta_sr = 1 iif a person from service s belongs to room r
     # This variable is used to represent the diversity of services. The objective function will contain a sum of delta across services and rooms.
@@ -178,8 +181,9 @@ def main() :
 
     #Objective function : 
     # maximise the number of service represented in each room
-    #model += np.sum(delta) + spatialWeights.sum() 
-    model +=  np.sum(delta)
+    # Minimize the différence between largest and smallest happyness
+    model += np.sum(delta) + spatialWeights.sum()    + (minHappy - maxHappy )
+
     
     #Each perso is set once
     for s  in np.sum(officeOccupancy, axis=0) : model += s <= 1
@@ -192,12 +196,14 @@ def main() :
         for j in range( nRooms ) :
             model += delta[s][j] >= Delta[s][j]/len(persoData)
             model += delta[s][j] <= Delta[s][j]
-        
-# =============================================================================
-#     #We imose two tall people not to be in front of each other
-#     for l in legs : model += l <= 1
-#     
-# =============================================================================
+
+     #We imose two tall people not to be in front of each other
+    for l in legs : model += l <= 1  
+     
+    for perso in spatialWeights.sum(axis=1) : 
+        model += minHappy <= perso
+        model += maxHappy >= perso
+#     # =============================================================================
     
     # Solve the maximisation problem
     model.solve()
@@ -218,7 +224,17 @@ class TestGetCountPerOfficeProp(unittest.TestCase):
         self.assertTrue(np.allclose(counts, [[1.],[2.]], rtol=1e-05, atol=1e-08))
 
 #==========
+class TestGetPropMatching(unittest.TestCase):
+    
+    def test_rresult(self ) :
+        perso = pd.DataFrame({'wc':[10,5,2], 'fenetre':[3,8,6]})
+        office = pd.DataFrame({'wc':[1,0,1], 'fenetre':[0,1,1]})
+        
+        agreement = GetPropMatching( np.diag([1,1, 1]), office, perso, {'wc':-1, 'fenetre':1}) 
+        self.assertTrue(np.allclose(agreement, [[-10, 0],[0, 8], [-2, 6]], rtol=1e-05, atol=1e-08))
+
+#==========
 if __name__ == '__main__':
+    
     unittest.main()
     main()
-    
