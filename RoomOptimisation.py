@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import pulp
-
+import unittest
 
 def FillRandomPerso( data, persoID, options = [] ) :
     """ 
@@ -65,9 +65,8 @@ def CreateOfficeData( nOffice=12, properties = {} ) :
 
 #==========
 def GetCountPerOfficeProp( placements, officeData, persoData, officeTags=['roomID'], persoTags=['service'], officeVal='isLeft', persoVal='isTall') :
-    persoFilter = pd.pivot_table(persoData, values=persoVal, columns=persoTags, index=persoData.index, aggfunc='sum').fillna(0).values.T
-    officeFilter = pd.pivot_table(officeData, values=officeVal, columns=officeTags, index=officeData.index, aggfunc='sum').fillna(0).values
-    
+    persoFilter = pd.pivot_table(persoData, values=persoVal, columns=persoTags, index=persoData.index, aggfunc='count').fillna(0).values.T
+    officeFilter = pd.pivot_table(officeData, values=officeVal, columns=officeTags, index=officeData.index, aggfunc='count').fillna(0).values
     return np.dot( np.dot(persoFilter, placements), officeFilter )
 
 #==========
@@ -84,7 +83,7 @@ def PrintOptimResults( placement, persoData, officeData, spatialProps ) :
     #Print results
     resultFrame = pd.DataFrame({'ID': persoData.index, 'Nom':persoData['Nom']}).set_index('ID')
     resultFrame['office']=-1
-   
+    
     x=np.zeros(shape=(len(persoData), len(officeData)))
     for iPerso in persoData.index :
         for iRoom in officeData.index : 
@@ -104,7 +103,12 @@ def PrintOptimResults( placement, persoData, officeData, spatialProps ) :
         print( '%s is given office %i with happyness %2.2f' % (row.Nom,row.office, row.happy))
         
     print( 'total happyness : ', resultFrame['happy'].sum())
-
+    print(persoData.loc[:, ['service']])
+    print(officeData.loc[:,['etage', 'roomID']].sort_values(['etage', 'roomID']))
+    print('delta :', GetCountPerOfficeProp( x, officeData, persoData, officeTags=['etage', 'roomID'], persoTags=['service'] ))
+    print(pd.pivot_table(officeData, values='isLeft', index=['etage', 'roomID'], aggfunc='count'))
+    
+    
 #==========
 def main() :
     np.random.seed(12435)
@@ -116,7 +120,7 @@ def main() :
     options =  ['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'] + ['weightPerso%i'%i for i in range(1,4)] 
     persoProp = { 'service' : [ 'SI', 'RH', 'Achat', 'GRC'], 'isTall' : [0,1, 0] }
     persoData = CreatePersoData( nPerso=nPerso, preferences=options, properties=persoProp)
-    print(persoData.head())
+    print(persoData)
     
     # Create randomly generated rooms
     officeProp = {'roomID':range(4),
@@ -130,7 +134,7 @@ def main() :
               'etage' : [1,2],    
              }
     officeData = CreateOfficeData(nOffice=nOffice,properties=officeProp)
-    print(officeData.head())
+    print(officeData)
     
     
     #officeOccupancy_ij = 1 iif person i is seated in office j.
@@ -174,8 +178,9 @@ def main() :
 
     #Objective function : 
     # maximise the number of service represented in each room
-    model += np.sum(delta) + spatialWeights.sum() 
-
+    #model += np.sum(delta) + spatialWeights.sum() 
+    model +=  np.sum(delta)
+    
     #Each perso is set once
     for s  in np.sum(officeOccupancy, axis=0) : model += s <= 1
     
@@ -188,9 +193,11 @@ def main() :
             model += delta[s][j] >= Delta[s][j]/len(persoData)
             model += delta[s][j] <= Delta[s][j]
         
-    #We imose two tall people not to be in front of each other
-    for l in legs : model += l <= 1
-    
+# =============================================================================
+#     #We imose two tall people not to be in front of each other
+#     for l in legs : model += l <= 1
+#     
+# =============================================================================
     
     # Solve the maximisation problem
     model.solve()
@@ -198,8 +205,20 @@ def main() :
 
     PrintOptimResults( officeOccupancy, persoData, officeData, spatialProps )
     
+   
     return 0
+#==========
+class TestGetCountPerOfficeProp(unittest.TestCase):
+    
+    def test_rresult(self ) :
+        perso = pd.DataFrame({'service':['SI', 'SI', 'RH'], 'isTall':[0,0,0]})
+        office = pd.DataFrame({'roomID':[0,0,0], 'isLeft':[0,0,0]})
+        
+        counts = GetCountPerOfficeProp( np.diag([1,1, 1]), office, perso, officeVal='isLeft', persoVal='isTall') 
+        self.assertTrue(np.allclose(counts, [[1.],[2.]], rtol=1e-05, atol=1e-08))
 
 #==========
 if __name__ == '__main__':
+    unittest.main()
     main()
+    
