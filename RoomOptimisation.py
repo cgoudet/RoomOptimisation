@@ -66,10 +66,22 @@ def CreateOfficeData( nOffice=12, properties = {} ) :
 #==========
 def GetCountPerOfficeProp( placements, officeData, persoData, officeTags=['roomID'], persoTags=['service'], officeVal='isLeft', persoVal='isTall') :
     persoFilter = pd.pivot_table(persoData, values=persoVal, columns=persoTags, index=persoData.index, aggfunc='sum').fillna(0).values.T
-
     officeFilter = pd.pivot_table(officeData, values=officeVal, columns=officeTags, index=officeData.index, aggfunc='sum').fillna(0).values
-
+    
     return np.dot( np.dot(persoFilter, placements), officeFilter )
+
+#==========
+def GetPropMatching( placement, officeData, persoData, properties ) :
+    keys= []
+    vals = []
+    for k, v in properties.items() :
+        keys.append(k)
+        vals.append(v)
+        
+    persoProp = persoData.loc[:, keys]
+    persoProp = np.dot( persoProp, np.diag(vals) ).T
+    officeProp = officeData.loc[:,keys].values
+    return np.dot( np.dot( persoProp, placement), officeProp)
 
 #==========
 def main() :
@@ -122,13 +134,25 @@ def main() :
     legs = None
     if len(roomTags) and len(servTags) : legs = GetCountPerOfficeProp( officeOccupancy, officeData, persoData, officeTags=roomTags, persoTags=servTags, officeVal='window', persoVal='window')[1]
     
+    
+    # =============================================================================
+    # Define the happyness of one person from its spatial properties
+    # Two cases arise :
+    #     - If a matching involves a positive feature (window) then the happiness increases by the value attributed to the matching
+    #     - If a matching involves a negative feature (sonnerie), then the happiness decreases
+    #     - If no matching, wether it was aked or not, the happyness doesn't change
+    #     spatialProps = { 'wc' : -1, 'clim':-1, 'mur':1, 'passage':-1, 'sonnerie':-1, 'window':1, 'etage':1 }
+    # =============================================================================
+    spatialProps = { 'wc' : -1, 'clim':-1, 'mur':1, 'passage':-1, 'sonnerie':-1, 'window':1, 'etage':1 }
+    spatialWeights = GetPropMatching( officeOccupancy, officeData, persoData, spatialProps )
+
+    #--------------------------------------------
     #Define the optimisation model
     model = pulp.LpProblem("Office setting maximizing happyness", pulp.LpMaximize)
 
-
     #Objective function : 
     # maximise the number of service represented in each room
-    model += np.sum(delta)
+    model += np.sum(delta) + spatialWeights.sum() 
 
     #Each perso is set once
     for s  in np.sum(officeOccupancy, axis=0) : model += s <= 1
