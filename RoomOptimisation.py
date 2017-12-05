@@ -72,16 +72,38 @@ def GetCountPerOfficeProp( placements, officeData, persoData, officeTags=['roomI
 
 #==========
 def GetPropMatching( placement, officeData, persoData, properties ) :
-    keys= []
-    vals = []
-    for k, v in properties.items() :
-        keys.append(k)
-        vals.append(v)
+    keys, vals = zip(*properties.items())
         
     persoProp = persoData.loc[:, keys]
     persoProp = np.dot( persoProp, np.diag(vals) ).T
     officeProp = officeData.loc[:,keys].values
     return np.dot( np.dot( persoProp, placement), officeProp)
+
+#==========
+def PrintOptimResults( placement, persoData, officeData, spatialProps ) :
+    #Print results
+    resultFrame = pd.DataFrame({'ID': persoData.index, 'Nom':persoData['Nom']}).set_index('ID')
+    resultFrame['office']=-1
+   
+    x=np.zeros(shape=(len(persoData), len(officeData)))
+    for iPerso in persoData.index :
+        for iRoom in officeData.index : 
+            if placement[iPerso][iRoom].varValue   :
+                resultFrame.loc[iPerso, 'office'] = iRoom
+                x[iPerso][iRoom]=1
+    
+    #Calcul du happyness par personne
+    keys, vals = zip(*spatialProps.items())
+    persoProp = persoData.loc[:, keys]
+    persoProp = np.dot( persoProp, np.diag(vals) )    
+    givenProperties = np.dot(x, officeData.loc[:,keys].values )  
+    resultFrame['happy'] = np.multiply(persoProp,givenProperties).sum(axis=1)
+    
+    print('Attributions Bureaux')
+    for row in resultFrame.itertuples() :
+        print( '%s is given office %i with happyness %2.2f' % (row.Nom,row.office, row.happy))
+        
+    print( 'total happyness : ', resultFrame['happy'].sum())
 
 #==========
 def main() :
@@ -172,7 +194,10 @@ def main() :
     
     # Solve the maximisation problem
     model.solve()
-    print('model status : ', pulp.LpStatus[model.status] )
+    print('model status : ', pulp.LpStatus[model.status], pulp.value(model.objective) )
+
+    PrintOptimResults( officeOccupancy, persoData, officeData, spatialProps )
+    
     return 0
 
 #==========
