@@ -117,13 +117,9 @@ def GetNeighbourMatching( placement, officeData, persoData ) :
     return the weighted agreement between a person and its neighbours
     """
     prefWeights = GetPersoPref(persoData) 
-    
     officeFilter = pd.pivot_table(officeData, values='isLeft', columns=GetRoomIndex(officeData), index=officeData.index, aggfunc='count').fillna(0).values
-    #print('officeFilter ', officeFilter) OK
-    print('perfWeightsPlacement : ', np.dot(prefWeights, placement))
     persoRoom = np.dot(placement, officeFilter)
     result = np.multiply( np.dot( prefWeights, persoRoom ), persoRoom)
-    print('result : ', result)
     return result
 
 #==========
@@ -288,7 +284,7 @@ class TestGetNeighbourMatching(unittest.TestCase):
         
         office = pd.DataFrame( { 'roomID': [1, 0, 0], 'isLeft':[0,0,0] } )
         
-        agreement = GetNeighbourMatching( np.diag(np.arange(3)), office, perso )
+        agreement = GetNeighbourMatching( np.diag([1,1,1]), office, perso )
         self.assertTrue(np.allclose(agreement, [[0, 0],[3,0], [6, 0]], rtol=1e-05, atol=1e-08))
 
 #==========
