@@ -3,6 +3,14 @@ import pandas as pd
 import pulp
 import unittest
 
+def GetRoomIndex( data) :
+    labels = ['etage', 'roomID']
+    columns = data.columns
+    
+    result =[ l for l in labels if l in columns ]
+    if not result : raise RuntimeError( 'No tagging possible for a room' )
+    return result
+
 def FillRandomPerso( data, persoID, options = [] ) :
     """ 
     
@@ -82,7 +90,40 @@ def GetPropMatching( placement, officeData, persoData, properties ) :
     officeProp = officeData.loc[:,keys].values
 
     result = np.multiply(persoProp, np.dot(placement, officeProp))
+    return result
 
+#==========
+def GetPersoPref( persoData ) :
+    result = np.zeros((len(persoData), len(persoData)))
+    
+    prefOrder = [int(c.replace('weightPerso', '')) for c in persoData.columns if 'weightPerso' in c]
+    
+    dicoName = persoData['Nom'].to_dict()
+    dicoName = {v: k for k, v in dicoName.items()}
+    
+    for rows in persoData.itertuples() :
+       for i in prefOrder :
+           targetName = getattr(rows,'perso%i'% i)
+           targetWeightName = 'weightPerso%i'%i
+           if targetName not in dicoName : continue
+           indexTarget = dicoName[targetName]
+           result[rows.Index][indexTarget] = getattr(rows,targetWeightName)
+
+    return result
+    
+#==========
+def GetNeighbourMatching( placement, officeData, persoData ) :
+    """
+    return the weighted agreement between a person and its neighbours
+    """
+    prefWeights = GetPersoPref(persoData) 
+    
+    officeFilter = pd.pivot_table(officeData, values='isLeft', columns=GetRoomIndex(officeData), index=officeData.index, aggfunc='count').fillna(0).values
+    #print('officeFilter ', officeFilter) OK
+    print('perfWeightsPlacement : ', np.dot(prefWeights, placement))
+    persoRoom = np.dot(placement, officeFilter)
+    result = np.multiply( np.dot( prefWeights, persoRoom ), persoRoom)
+    print('result : ', result)
     return result
 
 #==========
@@ -144,21 +185,23 @@ def main() :
     minHappy=pulp.LpVariable("minHappy",None,None,cat='Continuous')
     maxHappy=pulp.LpVariable("maxHappy",None,None,cat='Continuous')
     
-    # delta_sr = 1 iif a person from service s belongs to room r
-    # This variable is used to represent the diversity of services. The objective function will contain a sum of delta across services and rooms.
-    # This variable values will be fully constrained by Delta
-    nService = len(persoProp['service']) if 'service' in persoProp else 1
-    nRooms =( len(officeProp['roomID']) if 'roomID' in officeProp else 1 ) * (len(officeProp['etage']) if 'etage' in officeProp else 1)
-    delta = pulp.LpVariable.matrix("delta" ,(np.arange(nService), np.arange(nRooms) ) ,cat='Binary')
-
+ 
     # Delta counts the number of person from each service with a room
-    roomTags = [ x for x in ['roomID', 'etage'] if x in officeProp]
+    roomTags = GetRoomIndex(officeData)
     servTags = [ x for x in ['service'] if x in persoProp]
     Delta = None
     if len(roomTags) and len(servTags) : Delta = GetCountPerOfficeProp( officeOccupancy, officeData, persoData, officeTags=roomTags, persoTags=servTags)
 
+    # delta_sr = 1 iif a person from service s belongs to room r
+    # This variable is used to represent the diversity of services. The objective function will contain a sum of delta across services and rooms.
+    # This variable values will be fully constrained by Delta
+    nService = len(persoProp['service']) if 'service' in persoProp else 1
+    nRooms =np.array( [ len(officeProp[sz]) for sz in roomTags ] ).prod()
+    delta = pulp.LpVariable.matrix("delta" ,(np.arange(nService), np.arange(nRooms) ) ,cat='Binary')
+
+
     # legs counts the number of tall people per leftoffice
-    roomTags = [ x for x in ['isLeft', 'roomID', 'etage'] if x in officeProp]
+    roomTags.append( 'isLeft'  )
     servTags = [ x for x in ['isTall'] if x in persoProp]
     legs = None
     if len(roomTags) and len(servTags) : legs = GetCountPerOfficeProp( officeOccupancy, officeData, persoData, officeTags=roomTags, persoTags=servTags, officeVal='window', persoVal='window')[1]
@@ -216,7 +259,7 @@ def main() :
 #==========
 class TestGetCountPerOfficeProp(unittest.TestCase):
     
-    def test_rresult(self ) :
+    def test_result(self ) :
         perso = pd.DataFrame({'service':['SI', 'SI', 'RH'], 'isTall':[0,0,0]})
         office = pd.DataFrame({'roomID':[0,0,0], 'isLeft':[0,0,0]})
         
@@ -226,7 +269,7 @@ class TestGetCountPerOfficeProp(unittest.TestCase):
 #==========
 class TestGetPropMatching(unittest.TestCase):
     
-    def test_rresult(self ) :
+    def test_result(self ) :
         perso = pd.DataFrame({'wc':[10,5,2], 'fenetre':[3,8,6]})
         office = pd.DataFrame({'wc':[1,0,1], 'fenetre':[0,1,1]})
         
@@ -234,7 +277,36 @@ class TestGetPropMatching(unittest.TestCase):
         self.assertTrue(np.allclose(agreement, [[-10, 0],[0, 8], [-2, 6]], rtol=1e-05, atol=1e-08))
 
 #==========
+class TestGetNeighbourMatching(unittest.TestCase):
+    def test_result(self ) :
+        perso = pd.DataFrame( {'Nom':['Dum0', 'Dum1', 'Dum2' ],
+                               'weightPerso1' : [10,3,1], 
+                               'weightPerso2' : [0, 0, 6],
+                               'perso1' : ['Dum1', 'Dum2', 'Dum0'],
+                               'perso2': ['', '', 'Dum1']
+                               })
+        
+        office = pd.DataFrame( { 'roomID': [1, 0, 0], 'isLeft':[0,0,0] } )
+        
+        agreement = GetNeighbourMatching( np.diag(np.arange(3)), office, perso )
+        self.assertTrue(np.allclose(agreement, [[0, 0],[3,0], [6, 0]], rtol=1e-05, atol=1e-08))
+
+#==========
+class TestGetPersoPref(unittest.TestCase):
+    def test_result(self ) :
+        perso = pd.DataFrame( {'Nom':['Dum0', 'Dum1', 'Dum2' ],
+                               'weightPerso1' : [10,3,1], 
+                               'weightPerso2' : [0, 0, 6],
+                               'perso1' : ['Dum1', 'Dum2', 'Dum0'],
+                               'perso2': ['', '', 'Dum1']
+                               })
+
+        pref = GetPersoPref( perso )
+        self.assertTrue(np.allclose(pref, [[0, 10, 0],[0, 0, 3], [1, 6, 0]], rtol=1e-05, atol=1e-08))
+
+#==========
 if __name__ == '__main__':
     
-    unittest.main()
+    
     main()
+    unittest.main()
