@@ -28,8 +28,8 @@ def FillRandomPerso( data, persoID, options = [] ) :
         if v=='weightEtage' : data.loc[persoID,'etage'] = np.random.randint(1, 3)
 
 def CreatePersoData( nPerso=10,
-                     services = [ 'SI', 'RH', 'Achat', 'GRC'],
-                     options = ['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'] 
+                     properties = { 'services' : [ 'SI', 'RH', 'Achat', 'GRC'], 'isTall' : [0,1, 0] },
+                     preferences = ['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'] 
                      ) : 
     """"
     
@@ -42,26 +42,32 @@ def CreatePersoData( nPerso=10,
     dicoPersos = {'Nom' : ['Dummy%d'%(i) for i in range(nPerso)]}
 
     persoData = pd.DataFrame( dicoPersos)
-    persoData['isTall'] = np.random.choice([0, 1], size=(nPerso,1), p=[0.7, 0.3] )
-    persoData['service'] = np.random.choice(services, size=(nPerso,1) )
 
-    #wCol = ['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'] + ['weightPerso%i'%i for i in range(1,4)] 
-    for col in options + ['etage']: persoData[col]=0
+    for prop, value in properties.items() : persoData[prop] = np.random.choice(value, size=nPerso)
 
-    persoCol = [ 'perso%i'%int(opt.replace('weightPerso', '')) for opt in options if 'weightPerso' in opt]
+    for col in preferences + ['etage']: persoData[col]=0
+
+    persoCol = [ 'perso%i'%int(pref.replace('weightPerso', '')) for pref in preferences if 'weightPerso' in pref]
     for col in persoCol : persoData[col]=''
 
     #simulate the preferences
-    for iPerso in range(nPerso) : FillRandomPerso( persoData, iPerso, options)
+    for iPerso in range(nPerso) : FillRandomPerso( persoData, iPerso, preferences)
 
     return persoData
+
+
+def CreateOfficeData( nOffice=12, properties = {} ) : 
+    officeData = pd.DataFrame( { 'officeID': np.arange(0, nOffice)})
+    for prop, value in properties.items() : officeData[prop] = np.random.choice(value, size=nOffice )
+    officeData = officeData.set_index('officeID')
+    return officeData
 
 def main() :
     np.random.seed(12435)
 
     options =  ['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'] + ['weightPerso%i'%i for i in range(1,4)] 
 
-    persoData = CreatePersoData( nPerso=10, options=options)
+    persoData = CreatePersoData( nPerso=10, preferences=options)
     print(persoData)
     
     return 0
