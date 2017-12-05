@@ -27,8 +27,9 @@ def FillRandomPerso( data, persoID, options = [] ) :
             
         if v=='weightEtage' : data.loc[persoID,'etage'] = np.random.randint(1, 3)
 
+#==========
 def CreatePersoData( nPerso=10,
-                     properties = { 'services' : [ 'SI', 'RH', 'Achat', 'GRC'], 'isTall' : [0,1, 0] },
+                     properties = {},
                      preferences = ['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'] 
                      ) : 
     """"
@@ -55,21 +56,99 @@ def CreatePersoData( nPerso=10,
 
     return persoData
 
-
+#==========
 def CreateOfficeData( nOffice=12, properties = {} ) : 
     officeData = pd.DataFrame( { 'officeID': np.arange(0, nOffice)})
     for prop, value in properties.items() : officeData[prop] = np.random.choice(value, size=nOffice )
     officeData = officeData.set_index('officeID')
     return officeData
 
+#==========
+def GetCountPerOfficeProp( placements, officeData, persoData, officeTags=['roomID'], persoTags=['service'], officeVal='isLeft', persoVal='isTall') :
+    persoFilter = pd.pivot_table(persoData, values=persoVal, columns=persoTags, index=persoData.index, aggfunc='sum').fillna(0).values.T
+
+    officeFilter = pd.pivot_table(officeData, values=officeVal, columns=officeTags, index=officeData.index, aggfunc='sum').fillna(0).values
+
+    return np.dot( np.dot(persoFilter, placements), officeFilter )
+
+#==========
 def main() :
     np.random.seed(12435)
 
-    options =  ['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'] + ['weightPerso%i'%i for i in range(1,4)] 
+    nPerso=12
+    nOffice=20
 
-    persoData = CreatePersoData( nPerso=10, preferences=options)
-    print(persoData)
+    # Create randomly generated persons
+    options =  ['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'] + ['weightPerso%i'%i for i in range(1,4)] 
+    persoProp = { 'service' : [ 'SI', 'RH', 'Achat', 'GRC'], 'isTall' : [0,1, 0] }
+    persoData = CreatePersoData( nPerso=nPerso, preferences=options, properties=persoProp)
+    print(persoData.head())
     
+    # Create randomly generated rooms
+    officeProp = {'roomID':range(4),
+             'isLeft':range(2),
+              'wc': [0,0,0,0,1],
+              'clim': [0,0,0,0,1],
+              'mur': [0,0,0,0,1],
+              'passage': [0,0,0,0,1],
+              'sonnerie': [0,0,0,0,1],
+              'window': [0,0,0,0,1],
+              'etage' : [1,2],    
+             }
+    officeData = CreateOfficeData(nOffice=nOffice,properties=officeProp)
+    print(officeData.head())
+    
+    
+    #officeOccupancy_ij = 1 iif person i is seated in office j.
+    # Conditions must be imposed on the sum of lines and columns to ensure a unique seat for a person and a unique person on each office.
+    officeOccupancy = pulp.LpVariable.matrix("officeOccupancy" ,(list(persoData.index), list(officeData.index)),cat='Binary')
+    
+    # delta_sr = 1 iif a person from service s belongs to room r
+    # This variable is used to represent the diversity of services. The objective function will contain a sum of delta across services and rooms.
+    # This variable values will be fully constrained by Delta
+    nService = len(persoProp['service']) if 'service' in persoProp else 1
+    nRooms =( len(officeProp['roomID']) if 'roomID' in officeProp else 1 ) * (len(officeProp['etage']) if 'etage' in officeProp else 1)
+    delta = pulp.LpVariable.matrix("delta" ,(np.arange(nService), np.arange(nRooms) ) ,cat='Binary')
+
+    # Delta counts the number of person from each service with a room
+    roomTags = [ x for x in ['roomID', 'etage'] if x in officeProp]
+    servTags = [ x for x in ['service'] if x in persoProp]
+    Delta = None
+    if len(roomTags) and len(servTags) : Delta = GetCountPerOfficeProp( officeOccupancy, officeData, persoData, officeTags=roomTags, persoTags=servTags)
+
+    # legs counts the number of tall people per leftoffice
+    roomTags = [ x for x in ['isLeft', 'roomID', 'etage'] if x in officeProp]
+    servTags = [ x for x in ['isTall'] if x in persoProp]
+    legs = None
+    if len(roomTags) and len(servTags) : legs = GetCountPerOfficeProp( officeOccupancy, officeData, persoData, officeTags=roomTags, persoTags=servTags, officeVal='window', persoVal='window')[1]
+    
+    #Define the optimisation model
+    model = pulp.LpProblem("Office setting maximizing happyness", pulp.LpMaximize)
+
+
+    #Objective function : 
+    # maximise the number of service represented in each room
+    model += np.sum(delta)
+
+    #Each perso is set once
+    for s  in np.sum(officeOccupancy, axis=0) : model += s <= 1
+    
+    #Each room is set at least once
+    for s in np.sum(officeOccupancy, axis=1) : model += s == 1
+        
+    #Constraint of delta
+    for s in range( nService ) :
+        for j in range( nRooms ) :
+            model += delta[s][j] >= Delta[s][j]/len(persoData)
+            model += delta[s][j] <= Delta[s][j]
+        
+    #We imose two tall people not to be in front of each other
+    for l in legs : model += l <= 1
+    
+    
+    # Solve the maximisation problem
+    model.solve()
+    print('model status : ', pulp.LpStatus[model.status] )
     return 0
 
 #==========
