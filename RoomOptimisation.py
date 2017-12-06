@@ -83,14 +83,10 @@ def GetCountPerOfficeProp( placements, officeData, persoData, officeTags=['roomI
 
 #==========
 def GetNonBinaryMatching( placement, officeData, persoData, properties, officeVal='window' ) :
-    keys, vals = zip(*properties.items())
-
-    #Give a signe factor to each property to define its impact on happyness
-    persoProp = np.dot( persoData.loc[:, keys], np.diag(vals) )
-    
+   
     dicoResult = {}
     
-    for opt in keys : 
+    for opt in properties : 
         weightName = 'weight' + opt[0].upper() + opt[1:]
         persoFilter = pd.pivot_table(persoData, values=weightName, columns=opt, index=persoData.index, aggfunc='sum').fillna(0).values
         persoFilter = persoFilter[:,1:]
@@ -98,16 +94,11 @@ def GetNonBinaryMatching( placement, officeData, persoData, properties, officeVa
         officeFilter = pd.pivot_table(officeData, values=officeVal, columns=opt, index=officeData.index, aggfunc='count').fillna(0).values
         persoDispo = np.dot( placement, officeFilter )
 
-
-     #floorHappyness = np.multiply(floorHappyness.sum(axis=1), persoData['weightEtage'] )   
-        print( 'persoDispo : ', persoDispo )
-        print( 'placement : ', placement )
-        print('persoFilter : ', persoFilter )
         
         dicoResult[opt] = np.multiply( persoFilter, persoDispo ).sum(axis=1)
         
     result = pd.DataFrame( dicoResult )
-    print('result : ', result )
+
     return result
 
 #==========
@@ -115,14 +106,10 @@ def GetPropMatching( placement, officeData, persoData, properties ) :
     """
     Return the weighted agreement between persons preferences and office characteristics
     """
-    keys, vals = zip(*properties.items())
-    
-    #Give a signe factor to each property to define its impact on happyness
-    persoProp = np.dot( persoData.loc[:, keys], np.diag(vals) )
-    
-    officeProp = officeData.loc[:,keys].values
+        
+    officeProp = officeData.loc[:,properties].values
 
-    result = np.multiply(persoProp, np.dot(placement, officeProp))
+    result = np.multiply(persoData.loc[:, properties], np.dot(placement, officeProp))
     return result
 
 #==========
@@ -186,7 +173,7 @@ def PrintOptimResults( placement, persoData, officeData, spatialProps ) :
 #==========
 def NormalizePersoPref( persoData, options ) :
     for opt in options : 
-        s = persoData.loc[:,opt].sum(1)
+        s = np.sqrt((persoData.loc[:,opt]**2).sum(1))
         persoData.loc[:,opt] = (persoData.loc[:,opt].T / s).T
         
 #==========
@@ -257,7 +244,7 @@ def main() :
     #     - If a matching involves a negative feature (sonnerie), then the happiness decreases
     #     - If no matching, wether it was aked or not, the happyness doesn't change
     # =============================================================================
-    spatialProps = { 'wc' : -1, 'clim':-1, 'mur':1, 'passage':-1, 'sonnerie':-1, 'window':1 }
+    spatialProps = ['wc', 'clim', 'mur', 'passage', 'sonnerie', 'window' ]
     spatialWeights = GetPropMatching( officeOccupancy, officeData, persoData, spatialProps )
 
     #Define the happyness related to the floor of the office
@@ -271,6 +258,11 @@ def main() :
     #Create the amount of happyness from neighbours in a given office for person i
     happynessNeighbour = pulp.LpVariable.matrix('happynessNeighbour', happynessNeighbourShape , 0, None, cat='Continuous', )
 
+
+    # Create the amount of happyness for floor like variables
+    properties = ['etage']
+    happyFloor =  GetNonBinaryMatching( officeOccupancy, officeData, persoData, properties )
+     
     #--------------------------------------------
     #Define the optimisation model
     model = pulp.LpProblem("Office setting maximizing happyness", pulp.LpMaximize)
@@ -281,7 +273,7 @@ def main() :
     # Minimize the différence between largest and smallest happyness
     # Maximise the happyness from spatial coordinates
     # maximise the happyness from neigbours
-    model += np.sum(delta) + spatialWeights.sum()    + (minHappy - maxHappy ) + pulp.lpSum(happynessNeighbour)
+    model += np.sum(delta) + spatialWeights.sum() + (minHappy - maxHappy ) + pulp.lpSum(happynessNeighbour) #+ pulp.lpSum(happyFloor)
 
     
     #Each perso is set once
@@ -303,9 +295,6 @@ def main() :
         model += minHappy <= perso
         model += maxHappy >= perso
     
-    print( happynessNeighbourShape[0], happynessNeighbourShape[1])
-    print( prefNeighbours.shape)
-    print( roomDistribs.shape )
     for perso in happynessNeighbourShape[0] : 
         for room in happynessNeighbourShape[1] :
             model += happynessNeighbour[perso][room]<= prefNeighbours[perso][room]
@@ -336,8 +325,8 @@ class TestGetPropMatching(unittest.TestCase):
         perso = pd.DataFrame({'wc':[10,5,2], 'fenetre':[3,8,6]})
         office = pd.DataFrame({'wc':[1,0,1], 'fenetre':[0,1,1]})
         
-        agreement = GetPropMatching( np.diag([1,1, 1]), office, perso, {'wc':-1, 'fenetre':1}) 
-        self.assertTrue(np.allclose(agreement, [[-10, 0],[0, 8], [-2, 6]], rtol=1e-05, atol=1e-08))
+        agreement = GetPropMatching( np.diag([1,1, 1]), office, perso, ['wc','fenetre']) 
+        self.assertTrue(np.allclose(agreement, [[10, 0],[0, 8], [2, 6]], rtol=1e-05, atol=1e-08))
 
 #==========
 class TestGetNeighbourMatching(unittest.TestCase):
@@ -381,8 +370,8 @@ class TestNormalizePersoPref(unittest.TestCase):
         NormalizePersoPref(perso, [['weightPerso1', 'weightPerso2']])
         
         perso2 = pd.DataFrame( {'Nom':['Dum0', 'Dum1', 'Dum2' ],
-                                   'weightPerso1' : [1,1,1/7], 
-                                   'weightPerso2' : [0, 0, 6/7],
+                                   'weightPerso1' : [1,1,1/np.sqrt(37)], 
+                                   'weightPerso2' : [0, 0, 6/np.sqrt(37)],
                                    'perso1' : ['Dum1', 'Dum2', 'Dum0'],
                                    'perso2': ['', '', 'Dum1']
                                    })
@@ -394,10 +383,9 @@ class TestGetNonBinaryMatching(unittest.TestCase):
     
     def test_result(self ) :
         perso = pd.DataFrame({'etage':[1,0,2], 'weightEtage':[3,8,6], 'window':[0,0,0] })
-        office = pd.DataFrame({'etage':[1,1,2], 'window':[0,0,0]})
-        
+        office = pd.DataFrame({'etage':[1,1,2], 'window':[0,0,0]})     
         agreement = GetNonBinaryMatching( np.diag([1,1, 1]), office, perso, {'etage':1}) 
-        print('agreement : ', agreement)
+
         self.assertTrue(np.allclose(agreement, [[3],[0],[6]], rtol=1e-05, atol=1e-08))
 #==========
 if __name__ == '__main__':
