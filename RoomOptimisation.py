@@ -118,11 +118,14 @@ def GetNeighbourMatching( placement, officeData, persoData ) :
     """
     
     prefWeights = GetPersoPref(persoData) 
+    
     officeFilter = pd.pivot_table(officeData, values='isLeft', columns=GetRoomIndex(officeData), index=officeData.index, aggfunc='count').fillna(0).values
     persoRoom = np.dot(placement, officeFilter)
+    
     result = np.dot( prefWeights, persoRoom )
-    result = np.multiply( persoRoom, result)
-    return result
+    
+    #result = np.multiply( persoRoom, result)
+    return result, persoRoom
 
 #==========
 def PrintOptimResults( placement, persoData, officeData, spatialProps ) :
@@ -183,7 +186,8 @@ def main() :
     minHappy=pulp.LpVariable("minHappy",None,None,cat='Continuous')
     maxHappy=pulp.LpVariable("maxHappy",None,None,cat='Continuous')
     
- 
+    
+    
     # Delta counts the number of person from each service with a room
     roomTags = GetRoomIndex(officeData)
     servTags = [ x for x in ['service'] if x in persoProp]
@@ -211,23 +215,29 @@ def main() :
     #     - If a matching involves a positive feature (window) then the happiness increases by the value attributed to the matching
     #     - If a matching involves a negative feature (sonnerie), then the happiness decreases
     #     - If no matching, wether it was aked or not, the happyness doesn't change
-    #     spatialProps = { 'wc' : -1, 'clim':-1, 'mur':1, 'passage':-1, 'sonnerie':-1, 'window':1, 'etage':1 }
     # =============================================================================
     spatialProps = { 'wc' : -1, 'clim':-1, 'mur':1, 'passage':-1, 'sonnerie':-1, 'window':1, 'etage':1 }
     spatialWeights = GetPropMatching( officeOccupancy, officeData, persoData, spatialProps )
 
-
+    
     # Define the happyness of one person from its neighbours
-    happyNeighbour = GetNeighbourMatching( officeOccupancy, officeData, persoData )
+    prefNeighbours, roomDistribs = GetNeighbourMatching( officeOccupancy, officeData, persoData )
+    happynessNeighbourShape = (persoData.index.values, range(len(prefNeighbours[0])))
+
+    #Create the amount of happyness from neighbours in a given office for person i
+    happynessNeighbour = pulp.LpVariable.matrix('happynessNeighbour', happynessNeighbourShape , 0, None, cat='Continuous', )
 
     #--------------------------------------------
     #Define the optimisation model
     model = pulp.LpProblem("Office setting maximizing happyness", pulp.LpMaximize)
 
+
     #Objective function : 
     # maximise the number of service represented in each room
     # Minimize the différence between largest and smallest happyness
-    model += np.sum(delta) + spatialWeights.sum()    + (minHappy - maxHappy ) + happyNeighbour.sum(axis=1)
+    # Maximise the happyness from spatial coordinates
+    # maximise the happyness from neigbours
+    model += np.sum(delta) + spatialWeights.sum()    + (minHappy - maxHappy ) + pulp.lpSum(happynessNeighbour)
 
     
     #Each perso is set once
@@ -248,7 +258,14 @@ def main() :
     for perso in spatialWeights.sum(axis=1) : 
         model += minHappy <= perso
         model += maxHappy >= perso
-#     # =============================================================================
+    
+    print( happynessNeighbourShape[0], happynessNeighbourShape[1])
+    print( prefNeighbours.shape)
+    print( roomDistribs.shape )
+    for perso in happynessNeighbourShape[0] : 
+        for room in happynessNeighbourShape[1] :
+            model += happynessNeighbour[perso][room]<= prefNeighbours[perso][room]
+            model += happynessNeighbour[perso][room]<= roomDistribs[perso][room]
     
     # Solve the maximisation problem
     model.solve()
@@ -290,7 +307,8 @@ class TestGetNeighbourMatching(unittest.TestCase):
         
         office = pd.DataFrame( { 'roomID': [1, 0, 0], 'isLeft':[0,0,0] } )
         
-        agreement = GetNeighbourMatching( np.diag([1,1,1]), office, perso )
+        persoHappy, persoRoom = GetNeighbourMatching( np.diag([1,1,1]), office, perso )
+        agreement = np.multiply(persoHappy, persoRoom)
         self.assertTrue(np.allclose(agreement, [[0, 0],[3,0], [6, 0]], rtol=1e-05, atol=1e-08))
 
 #==========
