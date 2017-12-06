@@ -147,28 +147,48 @@ def GetNeighbourMatching( placement, officeData, persoData ) :
     return result, persoRoom
 
 #==========
-def PrintOptimResults( placement, persoData, officeData, spatialProps ) :
+def PrintOptimResults( placement, persoData, officeData, happyNeighbours, delta,  spatialProps ) :
     #Print results
     resultFrame = pd.DataFrame({'ID': persoData.index, 'Nom':persoData['Nom']}).set_index('ID')
     resultFrame['office']=-1
     
     x=np.zeros(shape=(len(persoData), len(officeData)))
+    hNei = np.zeros(shape=(len(persoData) ,len(happyNeighbours[0])) )
     for iPerso in persoData.index :
         for iRoom in officeData.index : 
             if placement[iPerso][iRoom].varValue   :
                 resultFrame.loc[iPerso, 'office'] = iRoom
-                x[iPerso][iRoom]=1
+                x[iPerso][iRoom]=placement[iPerso][iRoom].varValue
+                
+        for iNei in range(len(hNei[0])) :
+            hNei[iPerso][iNei] = happyNeighbours[iPerso][iNei].varValue
     
-    happyness = GetPropMatching( x, officeData, persoData, spatialProps)
-    print('happyness : ', happyness)
-    resultFrame['happy'] = happyness.sum(axis=1)
+    print('Total Happyness : ')
+    happyness = GetPropMatching( x, officeData, persoData, spatialProps).sum(1)
+    print('Spatial : ', happyness.sum() )
+    resultFrame['happySpat'] = happyness
+    
+    properties = ['etage']
+    happynessFloor =  GetNonBinaryMatching( x, officeData, persoData, properties ).sum(1)
+    print( 'Floor : ', happynessFloor.sum() )
+    resultFrame['happyFloor'] = happynessFloor
+
+    print('Neighbours : ', hNei.sum() )
+    resultFrame['happyNei'] = hNei.sum(1)
+    
+    resultFrame['happy'] = resultFrame.loc[:, ['happySpat', 'happyFloor', 'happyNei']].sum(1)
+    print(resultFrame)
+    
+    
+    print('Diversité : ', pulp.value(pulp.lpSum(delta) ) )
     
     print('Attributions Bureaux')
     for row in resultFrame.itertuples() :
         print( '%s is given office %i with happyness %2.2f' % (row.Nom,row.office, row.happy))
         
-    print( 'total happyness : ', resultFrame['happy'].sum())
-
+    print( 'total happyness spatial : ', resultFrame['happy'].sum())
+    
+    
 #==========
 def NormalizePersoPref( persoData, options ) :
     for opt in options : 
@@ -186,6 +206,7 @@ def main() :
     options =  ['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'] + ['weightPerso%i'%i for i in range(1,4)] 
     persoProp = { 'service' : [ 'SI', 'RH', 'Achat', 'GRC'], 'isTall' : [0,1, 0] }
     persoData = CreatePersoData( nPerso=nPerso, preferences=options, properties=persoProp)
+    print(persoData)
     NormalizePersoPref( persoData, [['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'], ['weightPerso%i'%i for i in range(1,4)]] )
     print(persoData)
     
@@ -303,7 +324,7 @@ def main() :
     model.solve()
     print('model status : ', pulp.LpStatus[model.status], pulp.value(model.objective) )
 
-    PrintOptimResults( officeOccupancy, persoData, officeData, spatialProps )
+    PrintOptimResults( officeOccupancy, persoData, officeData, happynessNeighbour, delta, spatialProps )
     
    
     return 0
