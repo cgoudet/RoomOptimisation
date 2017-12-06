@@ -82,12 +82,44 @@ def GetCountPerOfficeProp( placements, officeData, persoData, officeTags=['roomI
     return np.dot( np.dot(persoFilter, placements), officeFilter )
 
 #==========
+def GetNonBinaryMatching( placement, officeData, persoData, properties, officeVal='window' ) :
+    keys, vals = zip(*properties.items())
+
+    #Give a signe factor to each property to define its impact on happyness
+    persoProp = np.dot( persoData.loc[:, keys], np.diag(vals) )
+    
+    dicoResult = {}
+    
+    for opt in keys : 
+        weightName = 'weight' + opt[0].upper() + opt[1:]
+        persoFilter = pd.pivot_table(persoData, values=weightName, columns=opt, index=persoData.index, aggfunc='sum').fillna(0).values
+        persoFilter = persoFilter[:,1:]
+        
+        officeFilter = pd.pivot_table(officeData, values=officeVal, columns=opt, index=officeData.index, aggfunc='count').fillna(0).values
+        persoDispo = np.dot( placement, officeFilter )
+
+
+     #floorHappyness = np.multiply(floorHappyness.sum(axis=1), persoData['weightEtage'] )   
+        print( 'persoDispo : ', persoDispo )
+        print( 'placement : ', placement )
+        print('persoFilter : ', persoFilter )
+        
+        dicoResult[opt] = np.multiply( persoFilter, persoDispo ).sum(axis=1)
+        
+    result = pd.DataFrame( dicoResult )
+    print('result : ', result )
+    return result
+
+#==========
 def GetPropMatching( placement, officeData, persoData, properties ) :
     """
     Return the weighted agreement between persons preferences and office characteristics
     """
     keys, vals = zip(*properties.items())
+    
+    #Give a signe factor to each property to define its impact on happyness
     persoProp = np.dot( persoData.loc[:, keys], np.diag(vals) )
+    
     officeProp = officeData.loc[:,keys].values
 
     result = np.multiply(persoProp, np.dot(placement, officeProp))
@@ -197,7 +229,7 @@ def main() :
     
     
     
-    # Delta counts the number of person from each service with a room
+    # Delta counts the number of person from each service within a room
     roomTags = GetRoomIndex(officeData)
     servTags = [ x for x in ['service'] if x in persoProp]
     Delta = None
@@ -225,8 +257,11 @@ def main() :
     #     - If a matching involves a negative feature (sonnerie), then the happiness decreases
     #     - If no matching, wether it was aked or not, the happyness doesn't change
     # =============================================================================
-    spatialProps = { 'wc' : -1, 'clim':-1, 'mur':1, 'passage':-1, 'sonnerie':-1, 'window':1, 'etage':1 }
+    spatialProps = { 'wc' : -1, 'clim':-1, 'mur':1, 'passage':-1, 'sonnerie':-1, 'window':1 }
     spatialWeights = GetPropMatching( officeOccupancy, officeData, persoData, spatialProps )
+
+    #Define the happyness related to the floor of the office
+
 
     
     # Define the happyness of one person from its neighbours
@@ -355,8 +390,18 @@ class TestNormalizePersoPref(unittest.TestCase):
         assert_frame_equal( perso, perso2 )
 
 #==========
+class TestGetNonBinaryMatching(unittest.TestCase):
+    
+    def test_result(self ) :
+        perso = pd.DataFrame({'etage':[1,0,2], 'weightEtage':[3,8,6], 'window':[0,0,0] })
+        office = pd.DataFrame({'etage':[1,1,2], 'window':[0,0,0]})
+        
+        agreement = GetNonBinaryMatching( np.diag([1,1, 1]), office, perso, {'etage':1}) 
+        print('agreement : ', agreement)
+        self.assertTrue(np.allclose(agreement, [[3],[0],[6]], rtol=1e-05, atol=1e-08))
+#==========
 if __name__ == '__main__':
     
     
-    main()
+    #main()
     unittest.main()
