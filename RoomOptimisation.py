@@ -84,7 +84,7 @@ def GetCountPerOfficeProp( placements, officeData, persoData, officeTags=['roomI
 #==========
 def GetNonBinaryMatching( placement, officeData, persoData, properties, officeVal='window' ) :
    
-    dicoResult = {}
+    result = []
     
     for opt in properties : 
         weightName = 'weight' + opt[0].upper() + opt[1:]
@@ -95,11 +95,10 @@ def GetNonBinaryMatching( placement, officeData, persoData, properties, officeVa
         persoDispo = np.dot( placement, officeFilter )
 
         
-        dicoResult[opt] = np.multiply( persoFilter, persoDispo ).sum(axis=1)
+        result.append(np.multiply( persoFilter, persoDispo ).sum(axis=1) )
         
-    result = pd.DataFrame( dicoResult )
 
-    return result
+    return np.array(result).T
 
 #==========
 def GetPropMatching( placement, officeData, persoData, properties ) :
@@ -273,7 +272,7 @@ def main() :
     # Minimize the différence between largest and smallest happyness
     # Maximise the happyness from spatial coordinates
     # maximise the happyness from neigbours
-    model += np.sum(delta) + spatialWeights.sum() + (minHappy - maxHappy ) + pulp.lpSum(happynessNeighbour) #+ pulp.lpSum(happyFloor)
+    model += np.sum(delta) + spatialWeights.sum() + (minHappy - maxHappy ) + pulp.lpSum(happynessNeighbour) + pulp.lpSum(happyFloor)
 
     
     #Each perso is set once
@@ -391,5 +390,5 @@ class TestGetNonBinaryMatching(unittest.TestCase):
 if __name__ == '__main__':
     
     
-    #main()
-    unittest.main()
+    main()
+    #unittest.main()
