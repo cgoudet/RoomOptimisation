@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pulp
 import unittest
+from pandas.util.testing import assert_frame_equal
 
 def GetRoomIndex( data) :
     labels = ['etage', 'roomID']
@@ -151,6 +152,12 @@ def PrintOptimResults( placement, persoData, officeData, spatialProps ) :
     print( 'total happyness : ', resultFrame['happy'].sum())
 
 #==========
+def NormalizePersoPref( persoData, options ) :
+    for opt in options : 
+        s = persoData.loc[:,opt].sum(1)
+        persoData.loc[:,opt] = (persoData.loc[:,opt].T / s).T
+        
+#==========
 def main() :
     np.random.seed(12435)
 
@@ -161,7 +168,9 @@ def main() :
     options =  ['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'] + ['weightPerso%i'%i for i in range(1,4)] 
     persoProp = { 'service' : [ 'SI', 'RH', 'Achat', 'GRC'], 'isTall' : [0,1, 0] }
     persoData = CreatePersoData( nPerso=nPerso, preferences=options, properties=persoProp)
+    NormalizePersoPref( persoData, [['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'], ['weightPerso%i'%i for i in range(1,4)]] )
     print(persoData)
+    
     
     # Create randomly generated rooms
     officeProp = {'roomID':range(4),
@@ -323,6 +332,27 @@ class TestGetPersoPref(unittest.TestCase):
 
         pref = GetPersoPref( perso )
         self.assertTrue(np.allclose(pref, [[0, 10, 0],[0, 0, 3], [1, 6, 0]], rtol=1e-05, atol=1e-08))
+
+#==========
+class TestNormalizePersoPref(unittest.TestCase):
+    def test_result(self ) :
+        perso = pd.DataFrame( {'Nom':['Dum0', 'Dum1', 'Dum2' ],
+                                   'weightPerso1' : [10,3,1], 
+                                   'weightPerso2' : [0, 0, 6],
+                                   'perso1' : ['Dum1', 'Dum2', 'Dum0'],
+                                   'perso2': ['', '', 'Dum1']
+                                   })
+        
+        NormalizePersoPref(perso, [['weightPerso1', 'weightPerso2']])
+        
+        perso2 = pd.DataFrame( {'Nom':['Dum0', 'Dum1', 'Dum2' ],
+                                   'weightPerso1' : [1,1,1/7], 
+                                   'weightPerso2' : [0, 0, 6/7],
+                                   'perso1' : ['Dum1', 'Dum2', 'Dum0'],
+                                   'perso2': ['', '', 'Dum1']
+                                   })
+
+        assert_frame_equal( perso, perso2 )
 
 #==========
 if __name__ == '__main__':
