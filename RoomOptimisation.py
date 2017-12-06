@@ -116,10 +116,12 @@ def GetNeighbourMatching( placement, officeData, persoData ) :
     """
     return the weighted agreement between a person and its neighbours
     """
+    
     prefWeights = GetPersoPref(persoData) 
     officeFilter = pd.pivot_table(officeData, values='isLeft', columns=GetRoomIndex(officeData), index=officeData.index, aggfunc='count').fillna(0).values
     persoRoom = np.dot(placement, officeFilter)
-    result = np.multiply( np.dot( prefWeights, persoRoom ), persoRoom)
+    result = np.dot( prefWeights, persoRoom )
+    result = np.multiply( persoRoom, result)
     return result
 
 #==========
@@ -214,6 +216,10 @@ def main() :
     spatialProps = { 'wc' : -1, 'clim':-1, 'mur':1, 'passage':-1, 'sonnerie':-1, 'window':1, 'etage':1 }
     spatialWeights = GetPropMatching( officeOccupancy, officeData, persoData, spatialProps )
 
+
+    # Define the happyness of one person from its neighbours
+    happyNeighbour = GetNeighbourMatching( officeOccupancy, officeData, persoData )
+
     #--------------------------------------------
     #Define the optimisation model
     model = pulp.LpProblem("Office setting maximizing happyness", pulp.LpMaximize)
@@ -221,7 +227,7 @@ def main() :
     #Objective function : 
     # maximise the number of service represented in each room
     # Minimize the différence between largest and smallest happyness
-    model += np.sum(delta) + spatialWeights.sum()    + (minHappy - maxHappy )
+    model += np.sum(delta) + spatialWeights.sum()    + (minHappy - maxHappy ) + happyNeighbour.sum(axis=1)
 
     
     #Each perso is set once
