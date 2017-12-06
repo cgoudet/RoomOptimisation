@@ -256,21 +256,10 @@ def main() :
     legs = None
     if len(roomTags) and len(servTags) : legs = GetCountPerOfficeProp( officeOccupancy, officeData, persoData, officeTags=roomTags, persoTags=servTags, officeVal='window', persoVal='window')[1]
     
-    
-    # =============================================================================
-    # Define the happyness of one person from its spatial properties
-    # Two cases arise :
-    #     - If a matching involves a positive feature (window) then the happiness increases by the value attributed to the matching
-    #     - If a matching involves a negative feature (sonnerie), then the happiness decreases
-    #     - If no matching, wether it was aked or not, the happyness doesn't change
-    # =============================================================================
+    # Define the happyness of one person from its spatial properties. The value of happyness is weight*isAttributedValues
     spatialProps = ['wc', 'clim', 'mur', 'passage', 'sonnerie', 'window' ]
     spatialWeights = GetPropMatching( officeOccupancy, officeData, persoData, spatialProps )
 
-    #Define the happyness related to the floor of the office
-
-
-    
     # Define the happyness of one person from its neighbours
     prefNeighbours, roomDistribs = GetNeighbourMatching( officeOccupancy, officeData, persoData )
     happynessNeighbourShape = (persoData.index.values, range(len(prefNeighbours[0])))
