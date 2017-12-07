@@ -5,6 +5,9 @@ import unittest
 from pandas.util.testing import assert_frame_equal
 
 def GetRoomIndex( data) :
+    """
+    returns the set of columns names which allows identification of a room within the given dataset
+    """
     labels = ['etage', 'roomID']
     columns = data.columns
     
@@ -20,6 +23,7 @@ def FillRandomPerso( data, persoID, options = [] ) :
     Arguments:
         data {DataFrame} -- Data to modify
         persoID {int} -- Index of the person to change properties
+        
     """
     
     nFilled = np.random.randint(1, len(options))   
@@ -82,8 +86,11 @@ def GetCountPerOfficeProp( placements, officeData, persoData, officeTags=['roomI
     return np.dot( np.dot(persoFilter, placements), officeFilter )
 
 #==========
-def GetWeightedMatching( placement, officeData, persoData, properties, officeVal='window' ) :
-   
+def GetPRCatMatching( placement, officeData, persoData, properties, officeVal='window' ) :
+   """
+   Return the weighted agreement between person preferences and office characteristics of categorical variables
+   The category the person wants is in the column [option] and the weight in the column [weightOption]
+   """
     result = []
     
     for opt in properties : 
@@ -102,7 +109,7 @@ def GetWeightedMatching( placement, officeData, persoData, properties, officeVal
     return np.array(result).T
 
 #==========
-def GetPropMatching( placement, officeData, persoData, properties ) :
+def GetPRBinMatching( placement, officeData, persoData, properties ) :
     """
     Return the weighted agreement between persons preferences and office characteristics
     """
@@ -165,12 +172,12 @@ def PrintOptimResults( placement, persoData, officeData, happyNeighbours, delta,
             hNei[iPerso][iNei] = happyNeighbours[iPerso][iNei].varValue
     
     print('Total Happyness : ')
-    happyness = GetPropMatching( x, officeData, persoData, spatialProps).sum(1)
+    happyness = GetPRBinMatching( x, officeData, persoData, spatialProps).sum(1)
     print('Spatial : ', happyness.sum() )
     resultFrame['happySpat'] = happyness
     
     properties = ['etage']
-    happynessFloor =  GetWeightedMatching( x, officeData, persoData, properties ).sum(1)
+    happynessFloor =  GetPRCatMatching( x, officeData, persoData, properties ).sum(1)
     print( 'Floor : ', happynessFloor.sum() )
     resultFrame['happyFloor'] = happynessFloor
 
@@ -285,7 +292,7 @@ def RoomOptimisation() :
     
     # Define the happyness of one person from its spatial properties. The value of happyness is weight*isAttributedValues
     spatialProps = ['wc', 'clim', 'mur', 'passage', 'sonnerie', 'window' ]
-    spatialWeights = GetPropMatching( officeOccupancy, officeData, persoData, spatialProps )
+    spatialWeights = GetPRBinMatching( officeOccupancy, officeData, persoData, spatialProps )
 
     # Define the happyness of one person from its neighbours
     prefNeighbours, roomDistribs = GetNeighbourMatching( officeOccupancy, officeData, persoData )
@@ -297,7 +304,7 @@ def RoomOptimisation() :
 
     # Create the amount of happyness for floor like variables
     properties = ['etage']
-    happyFloor =  GetWeightedMatching( officeOccupancy, officeData, persoData, properties )
+    happyFloor =  GetPRCatMatching( officeOccupancy, officeData, persoData, properties )
      
     #--------------------------------------------
     #Define the optimisation model
@@ -355,13 +362,13 @@ class TestGetCountPerOfficeProp(unittest.TestCase):
         self.assertTrue(np.allclose(counts, [[1.],[2.]], rtol=1e-05, atol=1e-08))
 
 #==========
-class TestGetPropMatching(unittest.TestCase):
+class TestGetPRBinMatching(unittest.TestCase):
     
     def test_result(self ) :
         perso = pd.DataFrame({'wc':[10,5,2], 'fenetre':[3,8,6]})
         office = pd.DataFrame({'wc':[1,0,1], 'fenetre':[0,1,1]})
         
-        agreement = GetPropMatching( np.diag([1,1, 1]), office, perso, ['wc','fenetre']) 
+        agreement = GetPRBinMatching( np.diag([1,1, 1]), office, perso, ['wc','fenetre']) 
         self.assertTrue(np.allclose(agreement, [[10, 0],[0, 8], [2, 6]], rtol=1e-05, atol=1e-08))
 
 #==========
@@ -415,12 +422,12 @@ class TestNormalizePersoPref(unittest.TestCase):
         assert_frame_equal( perso, perso2 )
 
 #==========
-class TestGetWeightedMatching(unittest.TestCase):
+class TestGetPRCatMatching(unittest.TestCase):
     
     def test_result(self ) :
         perso = pd.DataFrame({'etage':[1,0,2], 'weightEtage':[3,8,6], 'window':[0,0,0] })
         office = pd.DataFrame({'etage':[1,1,2], 'window':[0,0,0]})     
-        agreement = GetWeightedMatching( np.diag([1,1, 1]), office, perso, ['etage']) 
+        agreement = GetPRCatMatching( np.diag([1,1, 1]), office, perso, ['etage']) 
 
         self.assertTrue(np.allclose(agreement, [[3],[0],[6]], rtol=1e-05, atol=1e-08))
         
