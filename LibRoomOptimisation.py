@@ -144,6 +144,42 @@ def GetPRBinMatching( placement, officeData, persoData, properties ) :
     return result
 
 #==========
+def GetPPBinSingleMatching( placement, officeData, persoData, option, roomID=[] ) :
+    """
+    Return the wishing and dispo arrays for a single matching between binary property
+    """
+    
+    if not roomID : roomID = GetRoomIndex(officeData)
+
+    weightName = 'weight' + option[0].upper() + option[1:]
+    inName = weightName.replace('weight', 'in' )
+    
+    officeFilter = pd.pivot_table(officeData.loc[:,roomID], columns=roomID, index=officeData.index, aggfunc=len).fillna(0)
+    officeFilter = np.dot(placement, officeFilter)
+    
+    weightPerRoom = np.dot( persoData[weightName].values.T, officeFilter )
+    
+    persoDispo = persoData[inName]
+    persoDispo = np.dot( persoDispo.T, officeFilter )
+    
+    return (weightPerRoom, persoDispo)
+
+
+        
+#==========
+def GetPPBinMatching( placement, officeData, persoData, properties, roomID=[] ) :
+    totWish=[]
+    totDispo=[]
+    
+    for opt in properties : 
+        wish, dispo = GetPPBinSingleMatching(placement, officeData, persoData, opt, roomID)
+        totWish.append(wish)
+        totDispo.append(dispo)
+
+    return (np.array(totWish), np.array(totDispo))
+
+
+#==========
 def GetPersoPref( persoData ) :
     result = np.zeros((len(persoData), len(persoData)))
     
@@ -263,8 +299,8 @@ def MultiplyWithFilter( weights, filt ) :
 
 
 #==========
-def GetPPCatMatching( placement, officeData, persoData, properties ):
-    result = [GetPPCatSingleMatching( placement, officeData, persoData, opt ) for opt in properties ]
+def GetPPCatMatching( placement, officeData, persoData, properties, roomID=[] ):
+    result = [GetPPCatSingleMatching( placement, officeData, persoData, opt, roomID ) for opt in properties ]
     return result   
 
 #==========
@@ -534,6 +570,33 @@ class TestGetPPCatMatching(unittest.TestCase):
         office = pd.DataFrame({'roomID':[0,0,0]})     
         (persoWish, persoDispo) = GetPPCatMatching( np.diag([1,1, 1]), office, perso, ['service'])[0]
         self.assertTrue(np.allclose( [[3.],[6]], MultiplyWithFilter( persoWish, persoDispo), rtol=1e-05, atol=1e-08))
+
+#==========
+class TestGetPPBinSingleMatching(unittest.TestCase):
+    
+    def test_result(self ) :
+        perso = pd.DataFrame({'inPhone':[0, 1, 1], 'weightPhone':[-2, 0, 0] })
+        office = pd.DataFrame({'roomID':[0,0,1]})     
+        (wish, dispo) = GetPPBinSingleMatching( np.diag([1,1, 1]), office, perso, 'phone' )
+        self.assertTrue(np.allclose( [-2, 0], wish, rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose( [1, 1], dispo, rtol=1e-05, atol=1e-08))
+        
+#==========
+class TestGetPPBinMatching(unittest.TestCase):
+    
+    def test_result(self ) :
+        perso = pd.DataFrame({'inPhone':[0, 1, 1], 'weightPhone':[-2, 0, 0], 'inSmoke':[1, 0, 1], 'weightSmoke':[0, -5, 0] })
+        office = pd.DataFrame({'roomID':[0,0,1]})     
+        (wish, dispo) = GetPPBinMatching( np.diag([1,1, 1]), office, perso, ['phone', 'smoke' ])
+        self.assertTrue(np.allclose( [[-2, 0],[-5, 0]], wish, rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose( [[1, 1],[1, 1]], dispo, rtol=1e-05, atol=1e-08))
+
+    def test_resultSelfLiking(self ) :
+        perso = pd.DataFrame({'inPhone':[0, 1, 1], 'weightPhone':[-2, 1, 0], 'inSmoke':[1, 0, 1], 'weightSmoke':[1, -5, 0] })
+        office = pd.DataFrame({'roomID':[0,0,1]})     
+        (wish, dispo) = GetPPBinMatching( np.diag([1,1, 1]), office, perso, ['phone', 'smoke' ])
+        self.assertTrue(np.allclose( [[-1, 0],[-4, 0]], wish, rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose( [[1, 1],[1, 1]], dispo, rtol=1e-05, atol=1e-08))
 
 #==========
 class TestRoomOptimisation( unittest.TestCase ):
