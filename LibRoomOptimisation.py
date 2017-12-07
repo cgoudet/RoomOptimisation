@@ -318,7 +318,9 @@ def RoomOptimisation( officeData, persoData,
                      prBinTag=[],
                      prCatTag=[],
                      consSpatBinTag=[],
-                     ppCatTag=[]
+                     ppCatTag=[],
+                     ppBinTag=[],
+                     minimize=True
                      ) :
 
     weightVars = prCatTag
@@ -348,8 +350,7 @@ def RoomOptimisation( officeData, persoData,
         nRooms = len( officeData.groupby( roomTag ) )
         delta = pulp.LpVariable.matrix("delta" ,(np.arange(nService), np.arange(nRooms) ) ,cat='Binary')
 
-
-#    
+ 
     # Define the happyness of one person from its spatial properties. The value of happyness is weight*isAttributedValues
     spatialBinWeights = np.array([])
     if prBinTag : spatialBinWeights = GetPRBinMatching( officeOccupancy, officeData, persoData, prBinTag )
@@ -362,7 +363,18 @@ def RoomOptimisation( officeData, persoData,
         K = persoData['weight'+opt[0].upper()+opt[1:]].sum()   
         ppCatVars.append( (pulpVars, wish, dispo, K))
         
-        
+    pulp.lpSum(None)
+    ppBinPulpVars = None
+    ppBinWish = np.array([])
+    ppBinDispo = np.array([])
+    ppBinK=None
+    if len(ppBinTag) : 
+        (ppBinWish, ppBinDispo) = GetPPBinMatching( officeOccupancy, officeData, persoData, ppBinTag )
+        s = ppBinWish.shape
+        ppBinPulpVars =  pulp.LpVariable.matrix( 'ppBin', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
+        ppBinK = persoData[['weight' + v[0].upper() + v[1:] for v in ppBinTag]].sum()   
+
+     
 #
 #    # Define the happyness of one person from its neighbours
 #    prefNeighbours, roomDistribs = GetNeighbourMatching( officeOccupancy, officeData, persoData )
@@ -393,6 +405,7 @@ def RoomOptimisation( officeData, persoData,
 #            + pulp.lpSum(happynessNeighbour) 
             + np.sum(spatialCatWeight)
             +  pulp.lpSum(v[0]for v in ppCatVars)
+            +  pulp.lpSum(ppBinPulpVars)
             )
     
     #Each perso is set once
@@ -414,6 +427,11 @@ def RoomOptimisation( officeData, persoData,
                 model += pulpVars[i][j] <= wish[i][j]
                 model += pulpVars[i][j] <= K * dispo[i][j]
         
+    for i in range(len(ppBinWish)) :
+        for j in range(len(ppBinWish[0])) :
+            model += ppBinPulpVars[i][j] <= ppBinWish[i][j]
+            model += ppBinPulpVars[i][j] <= ppBinK * ppBinDispo[i][j]
+           
 #    # legs counts the number of tall people per leftoffice
 #    roomTags.append( 'isLeft'  )
 #    servTags = [ x for x in ['isTall'] if x in persoProp]
@@ -431,7 +449,7 @@ def RoomOptimisation( officeData, persoData,
 #            model += happynessNeighbour[perso][room]<= roomDistribs[perso][room]
     
     # Solve the maximisation problem
-    model.solve()
+    if minimize : model.solve()
     #print('model status : ', pulp.LpStatus[model.status], pulp.value(model.objective) )
 
  #   PrintOptimResults( officeOccupancy, persoData, officeData, happynessNeighbour, delta, spatialProps )
@@ -581,6 +599,13 @@ class TestGetPPBinSingleMatching(unittest.TestCase):
         self.assertTrue(np.allclose( [-2, 0], wish, rtol=1e-05, atol=1e-08))
         self.assertTrue(np.allclose( [1, 1], dispo, rtol=1e-05, atol=1e-08))
         
+    def test_result(self ) :
+        perso = pd.DataFrame({'inPhone':[0, 1, 1], 'weightPhone':[-2, 0, 0] })
+        office = pd.DataFrame({'roomID':[0,0,1]})     
+        (wish, dispo) = GetPPBinSingleMatching( np.diag([1,1, 1]), office, perso, 'phone' )
+        self.assertTrue(np.allclose( [-2, 0], wish, rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose( [1, 1], dispo, rtol=1e-05, atol=1e-08))
+
 #==========
 class TestGetPPBinMatching(unittest.TestCase):
     
@@ -704,6 +729,28 @@ class TestRoomOptimisation( unittest.TestCase ):
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 6 )
+
+    def test_resultPPBinMatching(self) :
+        persoData = pd.DataFrame({'inPhone':[0, 1, 1], 'weightPhone':[-2, 0, 1] })
+        officeData = pd.DataFrame({'roomID':[1,0,0]})    
+        tag=['phone']
+        
+        model, placement = RoomOptimisation( officeData, persoData, ppBinTag=tag )
+        y = ArrayFromPulpMatrix2D( np.array(placement) )
+        print('hello')
+        print('y : ', y)
+        
+        (ppBinWish, ppBinDispo) = GetPPBinMatching( y, officeData, persoData, ['phone'] )
+        print('ppBinWish', ppBinWish)
+        print('ppBinDispo', ppBinDispo )
+        self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
+        self.assertEqual(pulp.value(model.objective), 1 )
+
+
+
+        self.assertEqual(y[0][0], 1.)
+
+
 
 #==========
 if __name__ == '__main__':
