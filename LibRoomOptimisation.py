@@ -270,7 +270,7 @@ def GetPPCatSingleMatching( placement, officeData, persoData, option, roomID=[] 
         inOption = 'in' + option[0].upper() + option[1:]
         weightName = 'weight' + option[0].upper() + option[1:]
         
-        commonLabels = list(set(persoData[option]).intersection(persoData[inOption]))
+        commonLabels = sorted(list(set(persoData[option]).intersection(persoData[inOption])))
         
         #self property of each person
         persoInOption = pd.pivot_table( persoData.loc[:,[inOption]], columns=[inOption], index=officeData.index, aggfunc=len).fillna(0)
@@ -570,24 +570,28 @@ class TestGetPPCatSingleMatching(unittest.TestCase):
     def test_result(self ) :
         perso = pd.DataFrame({'inService':['SI','RH', 'SI'], 'weightService':[3,8,6], 'service':['SI', '', 'RH'] })
         office = pd.DataFrame({'roomID':[0,0,0]})     
-        (persoWish, persoDispo) = GetPPCatSingleMatching( np.diag([1,1, 1]), office, perso, 'service') 
-        self.assertTrue(np.allclose( [[3.],[6]], MultiplyWithFilter( persoWish, persoDispo), rtol=1e-05, atol=1e-08))
+        (persoWish, persoDispo) = GetPPCatSingleMatching( np.diag([1,1, 1]), office, perso, 'service')
+        self.assertTrue(np.allclose( [[6], [3]], persoWish, rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose( [[1], [2]], persoDispo, rtol=1e-05, atol=1e-08))
     
     def test_resultSelfLiking(self ) :
         #Self liking is accepted
         perso = pd.DataFrame({'inService':['SI','RH'], 'weightService':[3,8], 'service':['RH', 'RH'] })
         office = pd.DataFrame({'roomID':[0,1]})     
-        (persoWish, persoDispo) = GetPPCatSingleMatching( np.diag([1,1]), office, perso, 'service') 
-        self.assertTrue(np.allclose( [[0,8]], MultiplyWithFilter( persoWish, persoDispo), rtol=1e-05, atol=1e-08))
-    
+        (persoWish, persoDispo) = GetPPCatSingleMatching( np.diag([1,1]), office, perso, 'service')
+        self.assertTrue(np.allclose( [[3, 8]], persoWish, rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose( [[0, 1]], persoDispo, rtol=1e-05, atol=1e-08))
+
 #==========
 class TestGetPPCatMatching(unittest.TestCase):
     
     def test_result(self ) :
         perso = pd.DataFrame({'inService':['SI','RH', 'SI'], 'weightService':[3,8,6], 'service':['SI', '', 'RH'] })
         office = pd.DataFrame({'roomID':[0,0,0]})     
-        (persoWish, persoDispo) = GetPPCatMatching( np.diag([1,1, 1]), office, perso, ['service'])[0]
-        self.assertTrue(np.allclose( [[3.],[6]], MultiplyWithFilter( persoWish, persoDispo), rtol=1e-05, atol=1e-08))
+        (wish, dispo) = GetPPCatMatching( np.diag([1,1, 1]), office, perso, ['service'])[0]
+        self.assertTrue(np.allclose( [[6], [3]], wish, rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose( [[1], [2]], dispo, rtol=1e-05, atol=1e-08))
+
 
 #==========
 class TestGetPPBinSingleMatching(unittest.TestCase):
@@ -720,6 +724,15 @@ class TestRoomOptimisation( unittest.TestCase ):
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 9 )
 
+    def test_resultPPCatMatchingNegWeight(self) :
+        persoData = pd.DataFrame({'inService':['RH','SI','RH'], 'service':['SI','SI', 'RH'], 'weightService':[-3,0,-6]})
+        officeData = pd.DataFrame({'roomID':[0,0,0]})
+        spatialTag = ['service' ]
+        model, placement = RoomOptimisation( officeData, persoData, ppCatTag=spatialTag )
+        
+        self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
+        self.assertEqual(pulp.value(model.objective), -9 )
+    
     def test_resultPPCatMatchingAloneRoom(self) :
         #Check self liking
         persoData = pd.DataFrame({'inService':['RH','SI'], 'service':['SI','SI'], 'weightService':[3,6]})
