@@ -73,7 +73,7 @@ def CreateOfficeData( nOffice=12, properties = {} ) :
     return officeData
 
 #==========
-def GetCountPerOfficeProp( placements, officeData, persoData, officeTags=['roomID'], persoTags=['service'], officeVal='isLeft', persoVal='isTall') :
+def GetCountPerOfficeProp( placements, officeData, persoData, officeTags=['roomID'], persoTags=['inService'], officeVal='isLeft', persoVal='isTall') :
     """
     Return the number of occurences of persons with a given property (personTag) in offices with another property (officeTag)
     """
@@ -82,18 +82,19 @@ def GetCountPerOfficeProp( placements, officeData, persoData, officeTags=['roomI
     return np.dot( np.dot(persoFilter, placements), officeFilter )
 
 #==========
-def GetNonBinaryMatching( placement, officeData, persoData, properties, officeVal='window' ) :
+def GetWeightedMatching( placement, officeData, persoData, properties, officeVal='window' ) :
    
     result = []
     
     for opt in properties : 
         weightName = 'weight' + opt[0].upper() + opt[1:]
-        persoFilter = pd.pivot_table(persoData, values=weightName, columns=opt, index=persoData.index, aggfunc='sum').fillna(0).values
-        persoFilter = persoFilter[:,1:]
-        
-        officeFilter = pd.pivot_table(officeData, values=officeVal, columns=opt, index=officeData.index, aggfunc='count').fillna(0).values
-        persoDispo = np.dot( placement, officeFilter )
+    
+        officeFilter = pd.pivot_table(officeData, values=officeVal, columns=opt, index=officeData.index, aggfunc='count').fillna(0)
+        persoDispo = np.dot( placement, officeFilter.values )
 
+
+        persoFilter = pd.pivot_table(persoData, values=weightName, columns=opt, index=persoData.index, aggfunc='sum').fillna(0)
+        persoFilter = persoFilter.loc[:,officeFilter.columns].values
         
         result.append(np.multiply( persoFilter, persoDispo ).sum(axis=1) )
         
@@ -169,7 +170,7 @@ def PrintOptimResults( placement, persoData, officeData, happyNeighbours, delta,
     resultFrame['happySpat'] = happyness
     
     properties = ['etage']
-    happynessFloor =  GetNonBinaryMatching( x, officeData, persoData, properties ).sum(1)
+    happynessFloor =  GetWeightedMatching( x, officeData, persoData, properties ).sum(1)
     print( 'Floor : ', happynessFloor.sum() )
     resultFrame['happyFloor'] = happynessFloor
 
@@ -196,7 +197,33 @@ def NormalizePersoPref( persoData, options ) :
         persoData.loc[:,opt] = (persoData.loc[:,opt].T / s).T
         
 #==========
-def main() :
+def GetPeoplePrefMatching( placement, officeData, persoData, properties ):
+    result = []
+    
+    for opt in properties :
+     
+        usedLabels = persoData[opt].unique()
+        print('usedLabels : ', usedLabels)
+        weightName = 'weight' + opt[0].upper() + opt[1:]
+    
+        servPerRoom = GetCountPerOfficeProp( placement, officeData, persoData, officeTags=GetRoomIndex(officeData), persoTags=opt )
+    
+        officeFilter = pd.pivot_table(officeData, values=officeVal, columns=opt, index=officeData.index, aggfunc='count').fillna(0)
+        persoDispo = np.dot( placement, officeFilter.values )
+
+
+        persoFilter = pd.pivot_table(persoData, values=weightName, columns=opt, index=persoData.index, aggfunc='sum').fillna(0)
+        persoFilter = persoFilter.loc[:,officeFilter.columns].values
+        
+        result.append(np.multiply( persoFilter, persoDispo ).sum(axis=1) )
+
+        result.append(np.multiply( persoFilter, persoDispo ).sum(axis=1) )
+    
+
+    return np.array(result).T      
+
+#==========
+def RoomOptimisation() :
     np.random.seed(12435)
 
     nPerso=12
@@ -204,7 +231,7 @@ def main() :
 
     # Create randomly generated persons
     options =  ['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'] + ['weightPerso%i'%i for i in range(1,4)] 
-    persoProp = { 'service' : [ 'SI', 'RH', 'Achat', 'GRC'], 'isTall' : [0,1, 0] }
+    persoProp = { 'inService' : [ 'SI', 'RH', 'Achat', 'GRC'], 'isTall' : [0,1, 0] }
     persoData = CreatePersoData( nPerso=nPerso, preferences=options, properties=persoProp)
     print(persoData)
     NormalizePersoPref( persoData, [['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'], ['weightPerso%i'%i for i in range(1,4)]] )
@@ -236,16 +263,16 @@ def main() :
     
     
     
-    # Delta counts the number of person from each service within a room
+    # Delta counts the number of person from each inService within a room
     roomTags = GetRoomIndex(officeData)
-    servTags = [ x for x in ['service'] if x in persoProp]
+    servTags = [ x for x in ['inService'] if x in persoProp]
     Delta = None
     if len(roomTags) and len(servTags) : Delta = GetCountPerOfficeProp( officeOccupancy, officeData, persoData, officeTags=roomTags, persoTags=servTags)
 
-    # delta_sr = 1 iif a person from service s belongs to room r
-    # This variable is used to represent the diversity of services. The objective function will contain a sum of delta across services and rooms.
+    # delta_sr = 1 iif a person from inService s belongs to room r
+    # This variable is used to represent the diversity of inServices. The objective function will contain a sum of delta across inServices and rooms.
     # This variable values will be fully constrained by Delta
-    nService = len(persoProp['service']) if 'service' in persoProp else 1
+    nService = len(persoProp['inService']) if 'inService' in persoProp else 1
     nRooms =np.array( [ len(officeProp[sz]) for sz in roomTags ] ).prod()
     delta = pulp.LpVariable.matrix("delta" ,(np.arange(nService), np.arange(nRooms) ) ,cat='Binary')
 
@@ -270,7 +297,7 @@ def main() :
 
     # Create the amount of happyness for floor like variables
     properties = ['etage']
-    happyFloor =  GetNonBinaryMatching( officeOccupancy, officeData, persoData, properties )
+    happyFloor =  GetWeightedMatching( officeOccupancy, officeData, persoData, properties )
      
     #--------------------------------------------
     #Define the optimisation model
@@ -316,12 +343,12 @@ def main() :
     PrintOptimResults( officeOccupancy, persoData, officeData, happynessNeighbour, delta, spatialProps )
     
    
-    return 0
+    return model, officeOccupancy
 #==========
 class TestGetCountPerOfficeProp(unittest.TestCase):
     
     def test_result(self ) :
-        perso = pd.DataFrame({'service':['SI', 'SI', 'RH'], 'isTall':[0,0,0]})
+        perso = pd.DataFrame({'inService':['SI', 'SI', 'RH'], 'isTall':[0,0,0]})
         office = pd.DataFrame({'roomID':[0,0,0], 'isLeft':[0,0,0]})
         
         counts = GetCountPerOfficeProp( np.diag([1,1, 1]), office, perso, officeVal='isLeft', persoVal='isTall') 
@@ -388,17 +415,27 @@ class TestNormalizePersoPref(unittest.TestCase):
         assert_frame_equal( perso, perso2 )
 
 #==========
-class TestGetNonBinaryMatching(unittest.TestCase):
+class TestGetWeightedMatching(unittest.TestCase):
     
     def test_result(self ) :
         perso = pd.DataFrame({'etage':[1,0,2], 'weightEtage':[3,8,6], 'window':[0,0,0] })
         office = pd.DataFrame({'etage':[1,1,2], 'window':[0,0,0]})     
-        agreement = GetNonBinaryMatching( np.diag([1,1, 1]), office, perso, {'etage':1}) 
+        agreement = GetWeightedMatching( np.diag([1,1, 1]), office, perso, ['etage']) 
 
         self.assertTrue(np.allclose(agreement, [[3],[0],[6]], rtol=1e-05, atol=1e-08))
+        
+
+#==========
+class TestGetPeoplePrefMatching(unittest.TestCase):
+    
+    def test_result(self ) :
+        perso = pd.DataFrame({'inService':['SI','RH', 'SI'], 'weightService':[3,8,6], 'service':['SI', '', 'RH'] })
+        office = pd.DataFrame({'roomID':[0,0,0]})     
+        agreement = GetPeoplePrefMatching( np.diag([1,1, 1]), office, perso, ['service']) 
+
+        self.assertTrue(np.allclose(agreement, [[3],[0],[6]], rtol=1e-05, atol=1e-08))
+         
+        
 #==========
 if __name__ == '__main__':
-    
-    
-    main()
-    #unittest.main()
+    unittest.main()
