@@ -236,19 +236,21 @@ def GetPPCatSingleMatching( placement, officeData, persoData, option, roomID=[] 
         
         commonLabels = list(set(persoData[option]).intersection(persoData[inOption]))
         
+        #self property of each person
         persoInOption = pd.pivot_table( persoData.loc[:,[inOption]], columns=[inOption], index=officeData.index, aggfunc=len).fillna(0)
         persoInOption = persoInOption[commonLabels]
-
+        
+        #weight for preferences of each person
         persoFilter = pd.pivot_table(persoData, values=weightName, columns=[option], index=persoData.index, aggfunc='sum').fillna(0)
         persoFilter = persoFilter.loc[:,commonLabels]
- 
+        
+        
         officeFilter = pd.pivot_table(officeData, columns=roomID, index=officeData.index, aggfunc=len).fillna(0)
         officeFilter = np.dot( placement, officeFilter.values )
         
         persoDispo = np.dot( persoInOption.values.T, officeFilter)
         
-        persoWish = np.dot( persoFilter.values.T, officeFilter)        
-       
+        persoWish = np.dot( persoFilter.values.T, officeFilter)     
 
         return (persoWish, persoDispo)
 
@@ -277,17 +279,18 @@ def TestInput( data, options ) :
 def RoomOptimisation( officeData, persoData,
                      diversityTag=[],
                      roomTag=[],
-                     spatialBinTag=[],
-                     spatialCatTag=[],
+                     prBinTag=[],
+                     prCatTag=[],
                      consSpatBinTag=[],
+                     ppCatTag=[]
                      ) :
 
-    weightVars = spatialCatTag
+    weightVars = prCatTag
     persoWeights = [ 'weight'+v[0].upper()+v[1:] for v in weightVars ]
-    persoTags = diversityTag + spatialBinTag + persoWeights + spatialCatTag
+    persoTags = diversityTag + prBinTag + persoWeights + prCatTag
     isInputOK = TestInput( persoData, persoTags )
     
-    officeTag=roomTag + spatialBinTag + spatialCatTag
+    officeTag=roomTag + prBinTag + prCatTag
     isInputOK *= TestInput( officeData, officeTag )
     if not isInputOK : raise RuntimeError('One of these options is not present in the datasets : ', officeTag, persoTags)
 
@@ -313,7 +316,17 @@ def RoomOptimisation( officeData, persoData,
 #    
     # Define the happyness of one person from its spatial properties. The value of happyness is weight*isAttributedValues
     spatialBinWeights = np.array([])
-    if spatialBinTag : spatialBinWeights = GetPRBinMatching( officeOccupancy, officeData, persoData, spatialBinTag )
+    if prBinTag : spatialBinWeights = GetPRBinMatching( officeOccupancy, officeData, persoData, prBinTag )
+
+    ppCatVars = []    
+    for opt in ppCatTag : 
+        (wish, dispo) = GetPPCatSingleMatching( officeOccupancy, officeData, persoData, opt )
+        s = wish.shape
+        pulpVars =  pulp.LpVariable.matrix( opt, (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
+        K = persoData['weight'+opt[0].upper()+opt[1:]].sum()   
+        ppCatVars.append( (pulpVars, wish, dispo, K))
+        
+        
 #
 #    # Define the happyness of one person from its neighbours
 #    prefNeighbours, roomDistribs = GetNeighbourMatching( officeOccupancy, officeData, persoData )
@@ -325,8 +338,7 @@ def RoomOptimisation( officeData, persoData,
 #
 #    # Create the amount of happyness for floor like variables
     spatialCatWeight = np.array([])
-
-    if spatialCatTag : spatialCatWeight =  GetPRCatMatching( officeOccupancy, officeData, persoData, spatialCatTag )
+    if prCatTag : spatialCatWeight =  GetPRCatMatching( officeOccupancy, officeData, persoData, prCatTag )
 #     
     #--------------------------------------------
     #Define the optimisation model
@@ -344,6 +356,7 @@ def RoomOptimisation( officeData, persoData,
 #            + (minHappy - maxHappy ) 
 #            + pulp.lpSum(happynessNeighbour) 
             + np.sum(spatialCatWeight)
+            +  pulp.lpSum(v[0]for v in ppCatVars)
             )
     
     #Each perso is set once
@@ -358,8 +371,13 @@ def RoomOptimisation( officeData, persoData,
             for j in range( nRooms ) :
                 model += delta[s][j] >= Delta[s][j]/len(persoData)
                 model += delta[s][j] <= Delta[s][j]
-
-
+    
+    for (pulpVars, wish, dispo, K ) in ppCatVars :
+        for i in range(len(wish)):
+            for j in range(len(wish[0])):
+                model += pulpVars[i][j] <= wish[i][j]
+                model += pulpVars[i][j] <= K * dispo[i][j]
+        
 #    # legs counts the number of tall people per leftoffice
 #    roomTags.append( 'isLeft'  )
 #    servTags = [ x for x in ['isTall'] if x in persoProp]
@@ -481,17 +499,7 @@ class TestGetPRCatMatching(unittest.TestCase):
         self.assertTrue(np.allclose(agreement, [3,0,6], rtol=1e-05, atol=1e-08))
           
 
-#==========
-#class TestGetPeoplePrefMatching(unittest.TestCase):
-#    
-#    def test_result(self ) :
-#        perso = pd.DataFrame({'inService':['SI','RH', 'SI'], 'weightService':[3,8,6], 'service':['SI', '', 'RH'] })
-#        office = pd.DataFrame({'roomID':[0,0,0]})     
-#        agreement = GetPeoplePrefMatching( np.diag([1,1, 1]), office, perso, ['service']) 
-#
-#        self.assertTrue(np.allclose(agreement, [[3],[0],[6]], rtol=1e-05, atol=1e-08))
-#         
-#==========
+
 class TestTestInput( unittest.TestCase):
     def test_result(self) :
         data = pd.DataFrame({'dum0': [1]})
@@ -510,7 +518,14 @@ class TestGetPPCatSingleMatching(unittest.TestCase):
         office = pd.DataFrame({'roomID':[0,0,0]})     
         (persoWish, persoDispo) = GetPPCatSingleMatching( np.diag([1,1, 1]), office, perso, 'service') 
         self.assertTrue(np.allclose( [[3.],[6]], MultiplyWithFilter( persoWish, persoDispo), rtol=1e-05, atol=1e-08))
-        
+    
+    def test_resultSelfLiking(self ) :
+        #Self liking is accepted
+        perso = pd.DataFrame({'inService':['SI','RH'], 'weightService':[3,8], 'service':['RH', 'RH'] })
+        office = pd.DataFrame({'roomID':[0,1]})     
+        (persoWish, persoDispo) = GetPPCatSingleMatching( np.diag([1,1]), office, perso, 'service') 
+        self.assertTrue(np.allclose( [[0,8]], MultiplyWithFilter( persoWish, persoDispo), rtol=1e-05, atol=1e-08))
+    
 #==========
 class TestGetPPCatMatching(unittest.TestCase):
     
@@ -564,7 +579,7 @@ class TestRoomOptimisation( unittest.TestCase ):
         persoData = pd.DataFrame({'window':[1,0,0], 'mur':[0, 0.5, 0]})
         officeData = pd.DataFrame({'window':[1, 0, 0], 'mur':[0, 1, 0]})
         spatialTag = ['mur', 'window' ]
-        model, placement = RoomOptimisation( officeData, persoData, spatialBinTag=spatialTag )
+        model, placement = RoomOptimisation( officeData, persoData, prBinTag=spatialTag )
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 1.5 )
@@ -578,10 +593,10 @@ class TestRoomOptimisation( unittest.TestCase ):
         spatialTag = ['etage']
         
         with self.assertRaises(RuntimeError) :
-            model, placement = RoomOptimisation( officeData, persoData, spatialCatTag=spatialTag )
+            model, placement = RoomOptimisation( officeData, persoData, prCatTag=spatialTag )
         
         persoData['weightEtage'] = [1, 0, 0.5]
-        model, placement = RoomOptimisation( officeData, persoData, spatialCatTag=spatialTag )
+        model, placement = RoomOptimisation( officeData, persoData, prCatTag=spatialTag )
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 1.5 )
@@ -591,13 +606,41 @@ class TestRoomOptimisation( unittest.TestCase ):
         persoData = pd.DataFrame({'window':[1,0], 'mur':[0, -0.5]})
         officeData = pd.DataFrame({'window':[1, 0], 'mur':[0, 1]})
         spatialTag = ['mur', 'window' ]
-        model, placement = RoomOptimisation( officeData, persoData, spatialBinTag=spatialTag )
+        model, placement = RoomOptimisation( officeData, persoData, prBinTag=spatialTag )
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 0.5 )
         y = ArrayFromPulpMatrix2D( np.array(placement) )
 
         self.assertTrue(np.allclose(y, np.diag([1,1]), rtol=1e-05, atol=1e-08))
+    
+    def test_resultPPCatMatching(self) :
+        persoData = pd.DataFrame({'inService':['RH','SI','RH'], 'service':['SI','', 'RH'], 'weightService':[3,2,6]})
+        officeData = pd.DataFrame({'roomID':[0,0,0]})
+        spatialTag = ['service' ]
+        model, placement = RoomOptimisation( officeData, persoData, ppCatTag=spatialTag )
+        
+        self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
+        self.assertEqual(pulp.value(model.objective), 9 )
+
+    def test_resultPPCatMatching0Weight(self) :
+        persoData = pd.DataFrame({'inService':['RH','SI','RH'], 'service':['SI','SI', 'RH'], 'weightService':[3,0,6]})
+        officeData = pd.DataFrame({'roomID':[0,0,0]})
+        spatialTag = ['service' ]
+        model, placement = RoomOptimisation( officeData, persoData, ppCatTag=spatialTag )
+        
+        self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
+        self.assertEqual(pulp.value(model.objective), 9 )
+
+    def test_resultPPCatMatchingAloneRoom(self) :
+        #Check self liking
+        persoData = pd.DataFrame({'inService':['RH','SI'], 'service':['SI','SI'], 'weightService':[3,6]})
+        officeData = pd.DataFrame({'roomID':[0,1]})
+        spatialTag = ['service' ]
+        model, placement = RoomOptimisation( officeData, persoData, ppCatTag=spatialTag )
+        
+        self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
+        self.assertEqual(pulp.value(model.objective), 6 )
 
 #==========
 if __name__ == '__main__':
