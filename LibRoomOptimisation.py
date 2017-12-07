@@ -552,7 +552,19 @@ class TestRoomOptimisation( unittest.TestCase ):
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 1.5 )
         self.assertEqual( placement[1][1].varValue, 1)
-                
+        
+    def test_resultBinSpatNegWeight(self) :
+        persoData = pd.DataFrame({'window':[1,0], 'mur':[0, -0.5]})
+        officeData = pd.DataFrame({'window':[1, 0], 'mur':[0, 1]})
+        spatialTag = ['mur', 'window' ]
+        model, placement = RoomOptimisation( officeData, persoData, spatialBinTag=spatialTag )
+        
+        self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
+        self.assertEqual(pulp.value(model.objective), 0.5 )
+        y = ArrayFromPulpMatrix2D( np.array(placement) )
+
+        self.assertTrue(np.allclose(y, np.diag([1,1]), rtol=1e-05, atol=1e-08))
+
 #==========
 if __name__ == '__main__':
     unittest.main()
