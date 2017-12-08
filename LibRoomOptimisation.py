@@ -316,13 +316,13 @@ def SetPPConstraint( model, wish, dispo, pulpMaxVars, pulpBinVars, K ) :
     s = wish.shape
     for i in range(s[0]) :
         for j in range(s[1]) :
-            model += pulpMaxVars[i][j] <= 2 * K + wish[i][j] - K * pulpBinVars[i][j]
+            model += pulpMaxVars[i][j] <= 2 * K + wish[i][j] - 2*K * pulpBinVars[i][j]
             model += pulpBinVars[i][j] <= dispo[i][j]
             model += pulpBinVars[i][j] >= dispo[i][j]/K
             model += pulpMaxVars[i][j] <= K * dispo[i][j]
             model += pulpMaxVars[i][j] >= - K * dispo[i][j]
             
-    
+
 #==========
 def RoomOptimisation( officeData, persoData,
                      diversityTag=[],
@@ -373,22 +373,21 @@ def RoomOptimisation( officeData, persoData,
         s = wish.shape
         pulpVars =  pulp.LpVariable.matrix( opt+'Max', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
         pulpBinVars =  pulp.LpVariable.matrix( opt+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
-        print('persoData : ', persoData['weight'+opt[0].upper()+opt[1:]] )
-        print('KBefore : ', persoData['weight'+opt[0].upper()+opt[1:]].sum() )
         K = np.fabs(persoData['weight'+opt[0].upper()+opt[1:]]).sum()
-        print('KAfter : ', np.fabs(persoData['weight'+opt[0].upper()+opt[1:]]).sum() )
         ppCatVars.append( (pulpVars, pulpBinVars, wish, dispo, K))
         
     pulp.lpSum(None)
     ppBinPulpVars = None
+    ppBinPulpBinVars = None
     ppBinWish = np.array([])
     ppBinDispo = np.array([])
     ppBinK=None
     if len(ppBinTag) : 
         (ppBinWish, ppBinDispo) = GetPPBinMatching( officeOccupancy, officeData, persoData, ppBinTag )
         s = ppBinWish.shape
-        ppBinPulpVars =  pulp.LpVariable.matrix( 'ppBin', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
-        ppBinK = np.fabs(persoData[['weight' + v[0].upper() + v[1:] for v in ppBinTag]]).sum()   
+        ppBinPulpVars =  pulp.LpVariable.matrix( 'ppBinMax', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
+        ppBinPulpBinVars =  pulp.LpVariable.matrix( 'ppBinBin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
+        ppBinK = np.fabs(persoData[['weight' + v[0].upper() + v[1:] for v in ppBinTag]]).values.sum()   
 
     
      
@@ -436,11 +435,9 @@ def RoomOptimisation( officeData, persoData,
 
     for (pulpVars, pulpBinVars, wish, dispo, K ) in ppCatVars :
             SetPPConstraint( model, wish, dispo, pulpVars, pulpBinVars, K )
-        
-    for i in range(len(ppBinWish)) :
-        for j in range(len(ppBinWish[0])) :
-            model += ppBinPulpVars[i][j] <= ppBinWish[i][j]
-            model += ppBinPulpVars[i][j] <= ppBinK * ppBinDispo[i][j]
+    
+    SetPPConstraint( model, ppBinWish, ppBinDispo, ppBinPulpVars, ppBinPulpBinVars, ppBinK )
+
            
 #    # legs counts the number of tall people per leftoffice
 #    roomTags.append( 'isLeft'  )
@@ -606,7 +603,7 @@ class TestGetPPCatMatching(unittest.TestCase):
 #==========
 class TestGetPPBinSingleMatching(unittest.TestCase):
     
-    def test_result(self ) :
+    def test_resultNegWeight(self ) :
         perso = pd.DataFrame({'inPhone':[0, 1, 1], 'weightPhone':[-2, 0, 0] })
         office = pd.DataFrame({'roomID':[0,0,1]})     
         (wish, dispo) = GetPPBinSingleMatching( np.diag([1,1, 1]), office, perso, 'phone' )
@@ -614,10 +611,10 @@ class TestGetPPBinSingleMatching(unittest.TestCase):
         self.assertTrue(np.allclose( [1, 1], dispo, rtol=1e-05, atol=1e-08))
         
     def test_result(self ) :
-        perso = pd.DataFrame({'inPhone':[0, 1, 1], 'weightPhone':[-2, 0, 0] })
+        perso = pd.DataFrame({'inPhone':[0, 1, 1], 'weightPhone':[2, 0, 0] })
         office = pd.DataFrame({'roomID':[0,0,1]})     
         (wish, dispo) = GetPPBinSingleMatching( np.diag([1,1, 1]), office, perso, 'phone' )
-        self.assertTrue(np.allclose( [-2, 0], wish, rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose( [2, 0], wish, rtol=1e-05, atol=1e-08))
         self.assertTrue(np.allclose( [1, 1], dispo, rtol=1e-05, atol=1e-08))
 
 #==========
@@ -636,6 +633,35 @@ class TestGetPPBinMatching(unittest.TestCase):
         (wish, dispo) = GetPPBinMatching( np.diag([1,1, 1]), office, perso, ['phone', 'smoke' ])
         self.assertTrue(np.allclose( [[-1, 0],[-4, 0]], wish, rtol=1e-05, atol=1e-08))
         self.assertTrue(np.allclose( [[1, 1],[1, 1]], dispo, rtol=1e-05, atol=1e-08))
+
+#========== 
+class TestSetPPConstriant( unittest.TestCase ):
+    def test_result(self) :
+        persoData = pd.DataFrame({'inPhone':[0, 1, 1], 'weightPhone':[-2, 0, 1] })
+        officeData = pd.DataFrame({'roomID':[1,0,0]})    
+        tag='phone'
+        
+        model = pulp.LpProblem("Office setting maximizing happyness", pulp.LpMaximize)
+        officeOccupancy = pulp.LpVariable.matrix("officeOccupancy" ,(list(persoData.index), list(officeData.index)),cat='Binary')
+        (wish, dispo) = GetPPBinMatching( officeOccupancy, officeData, persoData, [tag] )
+        s = wish.shape
+
+        pulpMaxVars =  pulp.LpVariable.matrix( 'ppBin', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
+        K = np.fabs(persoData[['weight' + tag[0].upper() + tag[1:]]]).values.sum()
+        pulpBinVars =  pulp.LpVariable.matrix( tag+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
+        
+        model += pulp.lpSum(pulpMaxVars)
+        
+        #SetConstraints
+        for s  in np.sum(officeOccupancy, axis=0) : model += s <= 1
+        for s in np.sum(officeOccupancy, axis=1) : model += s == 1    
+        SetPPConstraint( model, wish, dispo, pulpMaxVars, pulpBinVars, K ) 
+        
+        model.solve()
+        
+        
+        self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
+        self.assertEqual(pulp.value(model.objective), 1 )
 
 #==========
 class TestRoomOptimisation( unittest.TestCase ):
@@ -740,11 +766,6 @@ class TestRoomOptimisation( unittest.TestCase ):
         spatialTag = ['service' ]
         model, placement = RoomOptimisation( officeData, persoData, ppCatTag=spatialTag )
         y = ArrayFromPulpMatrix2D( np.array(placement) )
-        print('hello')
-        print('y : ', y)
-        (ppBinWish, ppBinDispo) = GetPPCatSingleMatching( y, officeData, persoData, 'service' )
-        print('ppBinWish', ppBinWish)
-        print('ppBinDispo', ppBinDispo )
 
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), -9 )
@@ -766,12 +787,7 @@ class TestRoomOptimisation( unittest.TestCase ):
         
         model, placement = RoomOptimisation( officeData, persoData, ppBinTag=tag )
         y = ArrayFromPulpMatrix2D( np.array(placement) )
-        print('hello')
-        print('y : ', y)
-        
-        (ppBinWish, ppBinDispo) = GetPPBinMatching( y, officeData, persoData, ['phone'] )
-        print('ppBinWish', ppBinWish)
-        print('ppBinDispo', ppBinDispo )
+
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 1 )
 
