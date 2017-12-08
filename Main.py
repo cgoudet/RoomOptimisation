@@ -7,7 +7,8 @@ Created on Thu Dec  7 10:28:08 2017
 
 import pandas as pd
 import numpy as np
-from LibRoomOptimisation import RoomOptimisation, CreateOfficeData, NormalizePersoPref, CreatePersoData
+from LibRoomOptimisation import *
+import pulp
 
 def ImportOffices( fileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\OfficeProperties.csv' ) :
     dicoOffice = { 'mur':bool,
@@ -37,13 +38,16 @@ def ImportPerso( fileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Proj
                    'rawPassage':0,
                    }
     
-    selectColumns = ['perso1', 'perso2', 'perso3', 'rawEtage', 'rawWindow', 'rawClim', 'rawSonnerie', 'rawPassage' ]
+    selectColumns = ['perso1', 'perso2', 'perso3', 'rawEtage', 'rawWindow', 'rawClim', 'rawSonnerie', 'rawPassage', 'Nom' ]
     data = pd.read_csv( fileName, 
                        header=1,
                        usecols=selectColumns).fillna(naInterpret)
     return data
 
 #==========
+def TransformScale( data, name, newName, increasing=True ) :
+    data.loc[data[name]!=0, newName] = data.loc[data[name]!=0, name] * (1.0 if increasing else -1)
+    data.fillna({newName:0}, inplace=True)
 
 #==========
 def main():
@@ -53,38 +57,46 @@ def main():
     officeData = ImportOffices()
     
     persoData = ImportPerso()
-    print(persoData)
-    return 0
-
-    np.random.seed(12435)
-
-    nPerso=12
-    nOffice=20
-
-    # Create randomly generated persons
-    options =  ['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'] + ['weightPerso%i'%i for i in range(1,4)] 
-    persoProp = { 'inService' : [ 'SI', 'RH', 'Achat', 'GRC'], 'isTall' : [0,1, 0] }
-    persoData = CreatePersoData( nPerso=nPerso, preferences=options, properties=persoProp)
-    print(persoData)
-    NormalizePersoPref( persoData, [['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'], ['weightPerso%i'%i for i in range(1,4)]] )
-    print(persoData)
     
-     # spatialProps = ['wc', 'clim', 'mur', 'passage', 'sonnerie', 'window' ]
-    # Create randomly generated rooms
-    officeProp = {'roomID':range(4),
-             'isLeft':range(2),
-              'wc': [0,0,0,0,1],
-              'clim': [0,0,0,0,1],
-              'mur': [0,0,0,0,1],
-              'passage': [0,0,0,0,1],
-              'sonnerie': [0,0,0,0,1],
-              'window': [0,0,0,0,1],
-              'etage' : [1,2],    
-             }
-    officeData = CreateOfficeData(nOffice=nOffice,properties=officeProp)
-    print(officeData)
+    factors = {'rawWindow':1, 'rawClim':-1, 'rawSonnerie':-1, 'rawPassage':-1 }
+    for k, v in factors.items() : TransformScale( persoData, k, k.replace('raw', '').lower(), v==1)
+
+    print(persoData)
+
+
+#    np.random.seed(12435)
+#
+#    nPerso=12
+#    nOffice=20
+#
+#    # Create randomly generated persons
+#    options =  ['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'] + ['weightPerso%i'%i for i in range(1,4)] 
+#    persoProp = { 'inService' : [ 'SI', 'RH', 'Achat', 'GRC'], 'isTall' : [0,1, 0] }
+#    persoData = CreatePersoData( nPerso=nPerso, preferences=options, properties=persoProp)
+#    print(persoData)
+#    NormalizePersoPref( persoData, [['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'], ['weightPerso%i'%i for i in range(1,4)]] )
+#    print(persoData)
+#    
+#     # spatialProps = ['wc', 'clim', 'mur', 'passage', 'sonnerie', 'window' ]
+#    # Create randomly generated rooms
+#    officeProp = {'roomID':range(4),
+#             'isLeft':range(2),
+#              'wc': [0,0,0,0,1],
+#              'clim': [0,0,0,0,1],
+#              'mur': [0,0,0,0,1],
+#              'passage': [0,0,0,0,1],
+#              'sonnerie': [0,0,0,0,1],
+#              'window': [0,0,0,0,1],
+#              'etage' : [1,2],    
+#             }
+#    officeData = CreateOfficeData(nOffice=nOffice,properties=officeProp)
+#    print(officeData)
  
-    RoomOptimisation( officeData, persoData )
+    model, placement = RoomOptimisation( officeData, persoData )
+    print('model status : ', pulp.LpStatus[model.status] )
+    print('objective : ', pulp.value(model.objective) )
+    
+    PrintOptimResults( placement, persoData, officeData )
     return 0
 
 #==========

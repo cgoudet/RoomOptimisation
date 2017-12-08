@@ -215,46 +215,44 @@ def GetNeighbourMatching( placement, officeData, persoData ) :
     return result, persoRoom
 
 #==========
-def PrintOptimResults( placement, persoData, officeData, happyNeighbours, delta,  spatialProps ) :
+def PrintOptimResults( placement, persoData, officeData ) : #, happyNeighbours, delta,  spatialProps ) :
     #Print results
     resultFrame = pd.DataFrame({'ID': persoData.index, 'Nom':persoData['Nom']}).set_index('ID')
     resultFrame['office']=-1
     
-    x=np.zeros(shape=(len(persoData), len(officeData)))
-    hNei = np.zeros(shape=(len(persoData) ,len(happyNeighbours[0])) )
-    for iPerso in persoData.index :
-        for iRoom in officeData.index : 
-            if placement[iPerso][iRoom].varValue   :
-                resultFrame.loc[iPerso, 'office'] = iRoom
-                x[iPerso][iRoom]=placement[iPerso][iRoom].varValue
+    x=ArrayFromPulpMatrix2D(placement)
+#    hNei = np.zeros(shape=(len(persoData) ,len(happyNeighbours[0])) )
+    for i, iPerso in enumerate(persoData.index) :
+        for j, iRoom in enumerate(officeData.index) : 
+            if x[i][j] : resultFrame.loc[iPerso, 'office'] = iRoom
                 
-        for iNei in range(len(hNei[0])) :
-            hNei[iPerso][iNei] = happyNeighbours[iPerso][iNei].varValue
+#        for iNei in range(len(hNei[0])) :
+#            hNei[iPerso][iNei] = happyNeighbours[iPerso][iNei].varValue
     
-    print('Total Happyness : ')
-    happyness = GetPRBinMatching( x, officeData, persoData, spatialProps).sum(1)
-    print('Spatial : ', happyness.sum() )
-    resultFrame['happySpat'] = happyness
-    
-    properties = ['etage']
-    happynessFloor =  GetPRCatMatching( x, officeData, persoData, properties ).sum(1)
-    print( 'Floor : ', happynessFloor.sum() )
-    resultFrame['happyFloor'] = happynessFloor
-
-    print('Neighbours : ', hNei.sum() )
-    resultFrame['happyNei'] = hNei.sum(1)
-    
-    resultFrame['happy'] = resultFrame.loc[:, ['happySpat', 'happyFloor', 'happyNei']].sum(1)
-    print(resultFrame)
-    
-    
-    print('Diversité : ', pulp.value(pulp.lpSum(delta) ) )
+#    print('Total Happyness : ')
+#    happyness = GetPRBinMatching( x, officeData, persoData, spatialProps).sum(1)
+#    print('Spatial : ', happyness.sum() )
+#    resultFrame['happySpat'] = happyness
+#    
+#    properties = ['etage']
+#    happynessFloor =  GetPRCatMatching( x, officeData, persoData, properties ).sum(1)
+#    print( 'Floor : ', happynessFloor.sum() )
+#    resultFrame['happyFloor'] = happynessFloor
+#
+#    print('Neighbours : ', hNei.sum() )
+#    resultFrame['happyNei'] = hNei.sum(1)
+#    
+#    resultFrame['happy'] = resultFrame.loc[:, ['happySpat', 'happyFloor', 'happyNei']].sum(1)
+#    print(resultFrame)
+#    
+#    
+#    print('Diversité : ', pulp.value(pulp.lpSum(delta) ) )
     
     print('Attributions Bureaux')
     for row in resultFrame.itertuples() :
-        print( '%s is given office %i with happyness %2.2f' % (row.Nom,row.office, row.happy))
+        print( '%s is given office %i with happyness %2.2f' % (row.Nom,row.office, 0))
         
-    print( 'total happyness spatial : ', resultFrame['happy'].sum())
+   # print( 'total happyness spatial : ', resultFrame['happy'].sum())
     
     
 #==========
