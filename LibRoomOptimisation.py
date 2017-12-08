@@ -389,9 +389,7 @@ def RoomOptimisation( officeData, persoData,
         ppBinPulpBinVars =  pulp.LpVariable.matrix( 'ppBinBin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
         ppBinK = np.fabs(persoData[['weight' + v[0].upper() + v[1:] for v in ppBinTag]]).values.sum()   
 
-    
-     
-#
+
 #    # Define the happyness of one person from its neighbours
 #    prefNeighbours, roomDistribs = GetNeighbourMatching( officeOccupancy, officeData, persoData )
 #    happynessNeighbourShape = (persoData.index.values, range(len(prefNeighbours[0])))
@@ -415,8 +413,8 @@ def RoomOptimisation( officeData, persoData,
             + spatialBinWeights.sum() 
 #            + pulp.lpSum(happynessNeighbour) 
             + np.sum(spatialCatWeight)
-            +  pulp.lpSum(v[0]for v in ppCatVars)
-            +  pulp.lpSum(ppBinPulpVars)
+            + pulp.lpSum(v[0]for v in ppCatVars)
+            + pulp.lpSum(ppBinPulpVars)
             )
     
     #Each perso is set once
