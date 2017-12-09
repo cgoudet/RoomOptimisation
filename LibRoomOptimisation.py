@@ -5,6 +5,95 @@ import unittest
 from pandas.util.testing import assert_frame_equal
 from PIL import Image, ImageFont, ImageDraw
 
+#==========
+def SetPRBinConstraint( model, placement, officeData, persoData, tags, bound, up=True  ) :
+    weights = GetPRBinMatching( placement, officeData, persoData, tags )
+    s = weights.shape
+    for i in range(s[0]) :
+        for j in range(s[1]) : 
+            if not weights[i][j] : continue
+            if up : model += weights[i][j] <= bound
+            else : model += weights[i][j] >= bound
+
+#==========
+class TestSetConstraints(unittest.TestCase):
+    def setUp( self ) : 
+        self.persoData = pd.DataFrame({'inPhone':[0, 1, 1], 
+                                       'weightPhone':[-2, 0, 1],
+                                       'window' : [1, 0, 0],
+                                       'clim' : [0, 0, 1]
+                                        })
+        self.officeData = pd.DataFrame({'roomID':[1,0,0],
+                                        'window':[1, 0, 0],
+                                        'clim':[0, 0, 1],
+                                        })    
+        
+        self.pulpVars = pulp.LpVariable.matrix("officeOccupancy" ,(np.arange(3), np.arange(3)),cat='Binary')
+        self.model = pulp.LpProblem("Office setting maximizing happyness", pulp.LpMaximize)
+
+        #SetConstraints
+        for s  in np.sum(self.pulpVars, axis=0) : self.model += s <= 1
+        for s in np.sum(self.pulpVars, axis=1) : self.model += s == 1    
+
+    def test_PPConstraint(self) :
+        tag='phone'
+        
+        (wish, dispo) = GetPPBinMatching(self.pulpVars, self.officeData, self.persoData, [tag] )
+        s = wish.shape
+
+        pulpMaxVars =  pulp.LpVariable.matrix( 'ppBin', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
+        K = np.fabs(self.persoData[['weight' + tag[0].upper() + tag[1:]]]).values.sum()
+        pulpBinVars =  pulp.LpVariable.matrix( tag+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
+        
+        self.model += pulp.lpSum(pulpMaxVars)
+        
+        SetPPConstraint( self.model, wish, dispo, pulpMaxVars, pulpBinVars, K ) 
+        
+        self.model.solve()        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        self.assertEqual(pulp.value(self.model.objective), 1 )
+    #===========    
+    def test_PRBinDown(self ) :
+    
+        tags=['window', 'clim']
+        bound = 1
+        
+        SetPRBinConstraint( self.model, self.pulpVars, self.officeData, self.persoData, tags, bound, up=False )
+        self.model.solve()        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        x = ArrayFromPulpMatrix2D(self.pulpVars)
+        self.assertTrue(np.allclose( np.diag([1,1,1]), x, rtol=1e-05, atol=1e-08))
+    
+    def test_PRBinDownInf(self) : 
+        self.persoData.loc[1,'clim']=1
+        tags=['window', 'clim']
+        bound = 1
+        
+        SetPRBinConstraint( self.model, self.pulpVars, self.officeData, self.persoData, tags, bound, up=False )
+        self.model.solve()        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
+
+    def test_PRBinUp(self ) :
+    
+        tags=['window', 'clim']
+        bound = 0       
+        SetPRBinConstraint( self.model, self.pulpVars, self.officeData, self.persoData, tags, bound, up=True )       
+        self.model.solve()        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        x = ArrayFromPulpMatrix2D(self.pulpVars)     
+        self.assertEqual( 0, x[0,0])
+        self.assertEqual( 0, x[2,2])
+ 
+    def test_PRBinUpInf(self ) :
+
+        self.persoData.loc[:,'clim']=1
+        tags=['window', 'clim']
+        bound = 0
+        SetPRBinConstraint( self.model, self.pulpVars, self.officeData, self.persoData, tags, bound, up=True )       
+        self.model.solve()        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
+ 
+#===========
 def ArrayFromPulpMatrix2D( x ) : 
     nRows = len(x)
     nCols = len(x[0])
@@ -289,7 +378,7 @@ def PrintOptimResults( placement
         print( '%s is given office %i with happyness %2.2f' % (row.Nom,row.office, 0))
     
     #resultFrame[['xImage', 'yImage']] = officeData[['xImage', 'yImage']]
-    DrawOutput( resultFrame, officeData[['xImage', 'yImage']] )
+    #DrawOutput( resultFrame, officeData[['xImage', 'yImage']] )
    # print( 'total happyness spatial : ', resultFrame['happy'].sum())
 
 #==========
@@ -705,33 +794,6 @@ class TestGetPPBinMatching(unittest.TestCase):
         self.assertTrue(np.allclose( [[1, 1],[1, 1]], dispo, rtol=1e-05, atol=1e-08))
 
 #========== 
-class TestSetPPConstriant( unittest.TestCase ):
-    def test_result(self) :
-        persoData = pd.DataFrame({'inPhone':[0, 1, 1], 'weightPhone':[-2, 0, 1] })
-        officeData = pd.DataFrame({'roomID':[1,0,0]})    
-        tag='phone'
-        
-        model = pulp.LpProblem("Office setting maximizing happyness", pulp.LpMaximize)
-        officeOccupancy = pulp.LpVariable.matrix("officeOccupancy" ,(list(persoData.index), list(officeData.index)),cat='Binary')
-        (wish, dispo) = GetPPBinMatching( officeOccupancy, officeData, persoData, [tag] )
-        s = wish.shape
-
-        pulpMaxVars =  pulp.LpVariable.matrix( 'ppBin', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
-        K = np.fabs(persoData[['weight' + tag[0].upper() + tag[1:]]]).values.sum()
-        pulpBinVars =  pulp.LpVariable.matrix( tag+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
-        
-        model += pulp.lpSum(pulpMaxVars)
-        
-        #SetConstraints
-        for s  in np.sum(officeOccupancy, axis=0) : model += s <= 1
-        for s in np.sum(officeOccupancy, axis=1) : model += s == 1    
-        SetPPConstraint( model, wish, dispo, pulpMaxVars, pulpBinVars, K ) 
-        
-        model.solve()
-        
-        
-        self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
-        self.assertEqual(pulp.value(model.objective), 1 )
 
 #==========
 class TestRoomOptimisation( unittest.TestCase ):
