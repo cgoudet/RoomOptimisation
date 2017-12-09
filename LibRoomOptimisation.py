@@ -497,7 +497,7 @@ def SetPPConstraint( model, wish, dispo, pulpMaxVars, pulpBinVars, K ) :
             model += pulpBinVars[i][j] >= dispo[i][j]/K
             model += pulpMaxVars[i][j] <= K * dispo[i][j]
             model += pulpMaxVars[i][j] >= - K * dispo[i][j]
-            
+            model += pulpMaxVars[i][j] >= -2 * K + wish[i][j] + 2*K * pulpBinVars[i][j]
 
 #==========
 def RoomOptimisation( officeData, persoData,
