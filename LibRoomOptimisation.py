@@ -5,9 +5,8 @@ import unittest
 from pandas.util.testing import assert_frame_equal
 from PIL import Image, ImageFont, ImageDraw
 
-#==========
-def SetPRBinConstraint( model, placement, officeData, persoData, tags, bound, up=True  ) :
-    weights = GetPRBinMatching( placement, officeData, persoData, tags )
+
+def SetPRConstraint( model, weights, bound, up=True ) : 
     s = weights.shape
     for i in range(s[0]) :
         for j in range(s[1]) : 
@@ -16,16 +15,29 @@ def SetPRBinConstraint( model, placement, officeData, persoData, tags, bound, up
             else : model += weights[i][j] >= bound
 
 #==========
-class TestSetConstraints(unittest.TestCase):
+def SetPRBinConstraint( model, placement, officeData, persoData, tags, bound, up=True ) :
+    weights = GetPRBinMatching( placement, officeData, persoData, tags )
+    SetPRConstraint(model, weights, bound, up )
+    
+#==========
+def SetPRCatConstraint( model, placement, officeData, persoData, tags, bound, up=True ) :
+    weights =  GetPRCatMatching( placement, officeData, persoData, tags )
+    for w in weights :  SetPRConstraint( model, w, bound, up)
+        
+#==========
+class TestSetConstraint(unittest.TestCase):
     def setUp( self ) : 
         self.persoData = pd.DataFrame({'inPhone':[0, 1, 1], 
                                        'weightPhone':[-2, 0, 1],
                                        'window' : [1, 0, 0],
-                                       'clim' : [0, 0, 1]
+                                       'clim' : [0, 0, 1],
+                                       'etage' : [1, 0, 2],
+                                       'weightEtage': [1, 1, 0]
                                         })
         self.officeData = pd.DataFrame({'roomID':[1,0,0],
                                         'window':[1, 0, 0],
                                         'clim':[0, 0, 1],
+                                        'etage':[1, 0, 0],
                                         })    
         
         self.pulpVars = pulp.LpVariable.matrix("officeOccupancy" ,(np.arange(3), np.arange(3)),cat='Binary')
@@ -34,6 +46,35 @@ class TestSetConstraints(unittest.TestCase):
         #SetConstraints
         for s  in np.sum(self.pulpVars, axis=0) : self.model += s <= 1
         for s in np.sum(self.pulpVars, axis=1) : self.model += s == 1    
+    
+    def test_PRCatConstraintUp(self):
+        properties = ['etage']
+        bound = 0
+        weights = GetPRCatMatching( self.pulpVars, self.officeData, self.persoData, properties)
+        SetPRConstraint( self.model, weights, bound, up=True)
+        self.model.solve()        
+        x = ArrayFromPulpMatrix2D(self.pulpVars)
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        self.assertEqual(x[1][0], 1)
+
+    def test_PRCatConstraintUpInf(self):
+        properties = ['etage']
+        bound = 0
+        self.persoData.loc[0,'etage'] = 0
+        weights = GetPRCatMatching( self.pulpVars, self.officeData, self.persoData, properties)
+        SetPRConstraint( self.model, weights, bound, up=True)
+        self.model.solve()        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
+        
+    def test_PRCatConstraintLow(self):
+        properties = ['etage']
+        bound=1
+        weights = GetPRCatMatching( self.pulpVars, self.officeData, self.persoData, properties)
+        SetPRConstraint(self.model, weights, bound, up=False)
+        self.model.solve()
+        x = ArrayFromPulpMatrix2D(self.pulpVars)
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        self.assertEqual(x[0][0], 1)
 
     def test_PPConstraint(self) :
         tag='phone'
@@ -52,8 +93,9 @@ class TestSetConstraints(unittest.TestCase):
         self.model.solve()        
         self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
         self.assertEqual(pulp.value(self.model.objective), 1 )
+        
     #===========    
-    def test_PRBinDown(self ) :
+    def test_PRBinLow(self ) :
     
         tags=['window', 'clim']
         bound = 1
@@ -64,7 +106,7 @@ class TestSetConstraints(unittest.TestCase):
         x = ArrayFromPulpMatrix2D(self.pulpVars)
         self.assertTrue(np.allclose( np.diag([1,1,1]), x, rtol=1e-05, atol=1e-08))
     
-    def test_PRBinDownInf(self) : 
+    def test_PRBinLowInf(self) : 
         self.persoData.loc[1,'clim']=1
         tags=['window', 'clim']
         bound = 1
