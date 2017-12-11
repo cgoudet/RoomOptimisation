@@ -77,16 +77,52 @@ class Constraint() :
         #else : raise RuntimeError( 'SetConstraint : Unknown type for Constraint : ', self.__type )
         
     def SetPRBinConstraint(self, model ) : 
-        for i in range(len(self.wish)) :
-            if self.bound>0 : model += self.wish[i]<= self.valBound
-            elif self.bound < 0 : model += self.wish[i] >= self.valBound
-    
+        tot = np.multiply(self.wish, self.dispo)
+        for val in tot :
+            if self.bound>0 : model += val <= self.bound
+            elif self.bound<0 : model += val >= self.bound
+ 
     def SetPRCatConstraint(self, model ) :
-        for line in self.wish : 
+        tot = np.multiply(self.wish, self.dispo)
+        for line in tot :
             for val in line :
                 if self.bound>0 : model += val <= self.bound
                 elif self.bound<0 : model += val >= self.bound
                 
+                
+    def GetHappyness( self, placement, officeData, persoData ) :
+        x = ArrayFromPulpMatrix2D( placement )
+        if 'pr' in self.__type : return self.GetPRHappyness( x, officeData, persoData )
+        elif 'pp' in self.__type : return self.GetPPHappyness( x, officeData, persoData)
+        
+    def GetPRHappyness( self, placement, officeData, persoData ) : 
+        if self.label == 'prBin' : self.DefinPRBinConstraint(placement, officeData, persoData )
+        else : self.DefinPRCatConstraint(placement, officeData, persoData )
+        return np.multiply( self.wish, self.dispo )
+    
+    def GetPPBinHappyness( self, placement, officeData, persoData ) :
+        inName = 'in'+self.label[0].upper() + self.label[1:]
+        weightName = 'weight'+self.label[0].upper() + self.label[1:]
+        
+        officeFilter = pd.pivot_table(officeData.loc[:,self.roomTag], columns=self.roomTag, index=officeData.index, aggfunc=len).fillna(0)
+        commonLabels = sorted(list(set(persoData[self.label]).intersection(persoData[inName])))
+        
+        if self.__type == 'ppBin' : self.wish = persoData.loc[:, [weightName]]
+        else : 
+            self.wish = pd.pivot_table( persoData.loc[:, [inName]], columns=[inName], index=persoData.index, aggfunc=len).fillna(0)
+            self.wish = self.wish[commonLabels].values
+                 
+        self.dispo = np.dot(placement, officeFilter)
+        self.dispo = np.dot(self.dispo, officeFilter.T)
+        self.dispo = np.dot( self.dispo, placement.T)
+
+        persoFilter = pd.pivot_table( persoData.loc[:,[weightName,self.label]], values=weightName, columns=[self.label], index=persoData.index, aggfunc='sum').fillna(0)
+        persoFilter = persoFilter.loc[:,commonLabels]
+
+        self.dispo = np.dot( self.dispo, persoFilter.T)
+        
+        return np.multiply(self.wish, self.dispo)
+        
 #==========
 def SetPRConstraint( model, weights, bound, up=True ) : 
     s = weights.shape
@@ -126,7 +162,7 @@ def GetRoomIndex( data) :
     """
     labels = ['etage', 'roomID']
     columns = data.columns
-    
+ 
     result =[ l for l in labels if l in columns ]
     if not result : raise RuntimeError( 'No tagging possible for a room' )
     return result
@@ -324,73 +360,30 @@ def PrintOptimResults( placement
                       , persoData
                       , officeData
                       , diversityTag=[]
-                      , roomTag=[]
-                      , prBinTag=[]
-                      , prCatTag=[]
-                      , ppBinTag=[]
-                      , ppCatTag=[]
-                      ) : #, happyNeighbours, delta,  spatialProps ) :
-    #Print results
+                      , constTag=[]
+                      ) :
     resultFrame = pd.DataFrame({'ID': persoData.index, 'Nom':persoData['Nom']}).set_index('ID')
     resultFrame['office']=-1
     
     x=ArrayFromPulpMatrix2D(placement)
-#    hNei = np.zeros(shape=(len(persoData) ,len(happyNeighbours[0])) )
     for i, iPerso in enumerate(persoData.index) :
         for j, iRoom in enumerate(officeData.index) : 
             if x[i][j] : resultFrame.loc[iPerso, 'office'] = iRoom
     
     print('diversityTag : ', diversityTag)
     if diversityTag : 
-        Delta = GetCountPerOfficeProp( x, officeData, persoData, officeTags=roomTag, persoTags=diversityTag)
+        Delta = GetCountPerOfficeProp( x, officeData, persoData, officeTags=GetRoomIndex(officeData), persoTags=diversityTag)
         Delta = np.min(Delta, 1)
         print('diversityTags : ' + ' '.join(diversityTag)+'\n', Delta)
         print('diversityObjective : ', Delta.sum())
         
+    for c in constTag : resultFrame[c.label] = c.GetHappyness( placement, officeData, persoData )
     
-    if ppBinTag : 
-        prBinWeights = pd.DataFrame( GetPRBinMatching( x, officeData, persoData, prBinTag ), columns=prBinTag, index=persoData.index )
-        print( 'prBinWeights : '+' '.join(prCatTag) + '\n', prBinWeights)
-        prBinObjective = prBinWeights.values.sum()
-        print( 'prBinObjective : ', prBinObjective )
-        
-    if ppCatTag : 
-        prCatWeights = pd.DataFrame( GetPRCatMatching( x, officeData, persoData, prCatTag ), columns = prCatTag, index=persoData.index )
-        print( 'prCatWeights : ' + ' '.join(prCatTag) + '\n', prCatWeights)
-        prCatObjective = prCatWeights.values.sum()
-        print( 'prCatObjective : ', prCatObjective )
-    
-    for opt in ppCatTag : 
-        (wish, dispo) = GetPPCatSingleMatching( x, officeData, persoData, opt, roomID=roomTag )
-        m = np.multiply(wish, dispo)
-        print( 'ppCatWeights : ' + opt +'\n', m )
-        print( 'ppCatObjective : ' + opt + ' : ', m.sum())
-    
-#        for iNei in range(len(hNei[0])) :
-#            hNei[iPerso][iNei] = happyNeighbours[iPerso][iNei].varValue
-    
-#    print('Total Happyness : ')
-#    happyness = GetPRBinMatching( x, officeData, persoData, spatialProps).sum(1)
-#    print('Spatial : ', happyness.sum() )
-#    resultFrame['happySpat'] = happyness
-#    
-#    properties = ['etage']
-#    happynessFloor =  GetPRCatMatching( x, officeData, persoData, properties ).sum(1)
-#    print( 'Floor : ', happynessFloor.sum() )
-#    resultFrame['happyFloor'] = happynessFloor
-#
-#    print('Neighbours : ', hNei.sum() )
-#    resultFrame['happyNei'] = hNei.sum(1)
-#    
-#    resultFrame['happy'] = resultFrame.loc[:, ['happySpat', 'happyFloor', 'happyNei']].sum(1)
-#    print(resultFrame)
-#    
-#    
-#    print('Diversite : ', pulp.value(pulp.lpSum(delta) ) )
+    resultFrame['totHappyness'] = resultFrame[1:].sum(axis=1)
     
     print('Attributions Bureaux')
     for row in resultFrame.itertuples() :
-        print( '%s is given office %i with happyness %2.2f' % (row.Nom,row.office, 0))
+        print( '%s is given office %i with happyness %2.2f' % (row.Nom,row.office, row.totHappyness))
     
     #resultFrame[['xImage', 'yImage']] = officeData[['xImage', 'yImage']]
     #DrawOutput( resultFrame, officeData[['xImage', 'yImage']] )
@@ -477,37 +470,29 @@ def SetPPConstraint( model, wish, dispo, pulpMaxVars, pulpBinVars, K, bound = 0,
 #==========
 def RoomOptimisation( officeData, persoData,
                      diversityTag=[],
-                     roomTag=[],
-                     prBinTag=[],
-                     prCatTag=[],
-                     prConstBinTag=[],
-                     prConstCatTag=[],
-                     ppCatTag=[],
-                     ppBinTag=[],
-                     ppConstBintag=[],
-                     ppConstCatTag=[],
                      constTag=[],
                      minimize=True,
                      printResults=False,
                      ) :
 
-    weightVars = prCatTag
-    persoWeights = [ 'weight'+v[0].upper()+v[1:] for v in weightVars ]
-    persoTags = diversityTag + prBinTag + persoWeights + prCatTag
-    isInputOK = TestInput( persoData, persoTags )
-    
-    officeTag=roomTag + prBinTag + prCatTag
-    isInputOK *= TestInput( officeData, officeTag )
-    if not isInputOK : raise RuntimeError('One of these options is not present in the datasets : ', officeTag, persoTags)
+#    weightVars = prCatTag
+#    persoWeights = [ 'weight'+v[0].upper()+v[1:] for v in weightVars ]
+#    persoTags = diversityTag + prBinTag + persoWeights + prCatTag
+#    isInputOK = TestInput( persoData, persoTags )
+#    
+#    officeTag=roomTag + prBinTag + prCatTag
+#    isInputOK *= TestInput( officeData, officeTag )
+#    if not isInputOK : raise RuntimeError('One of these options is not present in the datasets : ', officeTag, persoTags)
 
     #officeOccupancy_ij = 1 iif person i is seated in office j.
     # Conditions must be imposed on the sum of lines and columns to ensure a unique seat for a person and a unique person on each office.
     officeOccupancy = pulp.LpVariable.matrix("officeOccupancy" ,(list(persoData.index), list(officeData.index)),cat='Binary')
  
     
-    doDiversity = diversityTag and roomTag
+    doDiversity = diversityTag
     delta=np.array([])
     if  doDiversity : 
+        roomTag=GetRoomIndex(officeData)
         # Delta counts the number of person from each inService within a room
         Delta = GetCountPerOfficeProp( officeOccupancy, officeData, persoData, officeTags=roomTag, persoTags=diversityTag)
     
@@ -616,11 +601,7 @@ def RoomOptimisation( officeData, persoData,
                       , persoData
                       , officeData
                       , diversityTag
-                      , roomTag
-                      , prBinTag
-                      , prCatTag
-                      , ppBinTag
-                      , ppCatTag
+                      , constTag
                       )
         print('\n==========\n')
         print('model status : ', pulp.LpStatus[model.status] )
@@ -1002,8 +983,8 @@ class TestRoomOptimisation( unittest.TestCase ):
 
         
     def test_resultObjectiveDiversity(self) :
-
-        model, placement = RoomOptimisation( self.officeData, self.persoData, roomTag=['roomID'], diversityTag=['inService'] )
+        self.officeData.drop('etage', inplace=True, axis=1)
+        model, placement = RoomOptimisation( self.officeData, self.persoData, diversityTag=['inService'] )
     
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 2 )
@@ -1015,7 +996,8 @@ class TestRoomOptimisation( unittest.TestCase ):
         
     def test_resultDiversity(self) :
         self.officeData['roomID']=[0,1,1]
-        model, placement = RoomOptimisation( self.officeData, self.persoData, roomTag=['roomID'], diversityTag=['inService'] )
+        self.officeData.drop('etage', inplace=True, axis=1)
+        model, placement = RoomOptimisation( self.officeData, self.persoData, diversityTag=['inService'] )
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 3 )
@@ -1035,7 +1017,6 @@ class TestRoomOptimisation( unittest.TestCase ):
         self.assertTrue(np.allclose(y, np.diag([1,1,1]), rtol=1e-05, atol=1e-08))
 
     def test_resultCatSpat(self) : 
-        spatialTag = ['etage']
         constTag = [Constraint('prCat', 'etage', True )]
         model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag )
         
@@ -1043,9 +1024,9 @@ class TestRoomOptimisation( unittest.TestCase ):
         self.assertEqual(pulp.value(model.objective), 1.5 )
         self.assertEqual( placement[1][1].varValue, 1)
         
-        self.persoData.drop('weightEtage',inplace=True, axis=1)
-        with self.assertRaises(RuntimeError) :
-            model, placement = RoomOptimisation( self.officeData, self.persoData, prCatTag=spatialTag )
+#        self.persoData.drop('weightEtage',inplace=True, axis=1)
+#        with self.assertRaises(RuntimeError) :
+#            model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag )
         
         
     def test_resultBinSpatNegWeight(self) :
@@ -1108,8 +1089,8 @@ class TestRoomOptimisation( unittest.TestCase ):
 
     def test_resultPPBinMatching(self) :
         self.officeData['roomID'] = [1,0,0]    
-        constTag = [Constraint('ppBin', 'phone', maxWeights=True )]
-        model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag, roomTag=['roomID'] )
+        constTag = [Constraint('ppBin', 'phone', maxWeights=True, roomTag=['roomID']  )]
+        model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag)
         y = ArrayFromPulpMatrix2D( np.array(placement) )
 
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
@@ -1140,8 +1121,9 @@ class TestRoomOptimisation( unittest.TestCase ):
 #        self.assertEqual(y[1][1], 1)
 
     def test_resultPRConstBin(self) : 
-        tag=[(['window'], 0, True)]    
-        model, placement = RoomOptimisation( self.officeData, self.persoData, prConstBinTag=tag, roomTag=['roomID'] )
+        tag=[(['window'], 0, True)]   
+        constTag = [Constraint('prBin', 'window', bound=1, valBound=0, roomTag=['roomID'])]
+        model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag )
         y = ArrayFromPulpMatrix2D( np.array(placement) )
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
@@ -1151,7 +1133,8 @@ class TestRoomOptimisation( unittest.TestCase ):
     def test_resultPRConstCat(self) : 
         self.persoData['etage']=[2, 1, 2]
         tag=[(['etage'], 0, True)]    
-        model, placement = RoomOptimisation( self.officeData, self.persoData, prConstCatTag=tag, roomTag=['roomID'] )
+        constTag = [ Constraint('prCat', 'etage', bound=1, valBound=0, roomTag=['roomID'])]
+        model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag )
         y = ArrayFromPulpMatrix2D( np.array(placement) )
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )

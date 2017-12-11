@@ -83,12 +83,12 @@ def main():
     
     officeFileName = 'OfficeProperties.csv'
     #Read the input data for offices
-    officeData = ImportOffices( )
+    officeData = ImportOffices( officeFileName )
     print(officeData.head())
     #PrintOfficeNumber(officeData)
     
-    persoFileName = 'PersoProperties.csv'
-    persoData = ImportPerso( )
+    persoFileName = 'PersoPref.csv'
+    persoData = ImportPerso( persoFileName )
     
     factors = {'rawWindow':1, 'rawClim':-1, 'rawPassage':1 }
     for k, v in factors.items() : TransformScale( persoData, k, k.replace('raw', '').lower(), v==1)
@@ -99,9 +99,10 @@ def main():
         persoData['weightPerso'+str(i)] = 7-2*i
         persoData['inPerso'+str(i)] = persoData['Nom']
         persoData['perso'+str(i)] = persoData['rawPerso'+str(i)]
-        
-    
-    persoProp = pd.read_csv('C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoProp.csv')
+     
+    persoPropName = 'C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoProp.csv'
+    persoPropName = 'PersoProp.csv'
+    persoProp = pd.read_csv( persoPropName )
     print(persoProp.head())
     persoData = pd.merge( persoData, persoProp, on='Nom')
     print(persoData.head())   
@@ -141,20 +142,17 @@ def main():
     #diversity
     #model, placement = RoomOptimisation( officeData, persoData , diversityTag=['inService'], roomTag=['roomID'])
     
-    prBinTag = [ 'window', 'clim', 'passage']
-    prCatTag = ['etage']
-    ppBinTag = []
-    ppCatTag = ['perso1']
-    constTag = [Constraint('ppCat', 'perso1', True ),
-                Constraint('ppCat', 'perso2', True ),
-                Constraint('ppCat', 'perso3', True ),
+    constTag = [Constraint('prBin', 'window', True ),
+                Constraint('prBin', 'clim', True ),
+                Constraint('prBin', 'passage', True ),
+                Constraint('prCat', 'etage', True ),
+#                Constraint('ppCat', 'perso1', True, roomTag=['roomID'] ),
+#                Constraint('ppCat', 'perso2', True, roomTag=['roomID'] ),
+#                Constraint('ppCat', 'perso3', True, roomTag=['roomID'] ),
                 ]
     t = time.time()
     model, placement = RoomOptimisation( officeData, persoData 
                                         , diversityTag=['inService']
-                                        , roomTag=['roomID']
-                                        , prBinTag=prBinTag
-                                        , prCatTag=prCatTag
                                         , constTag=constTag
                                         , printResults=True
                                         )
