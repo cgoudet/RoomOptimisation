@@ -28,13 +28,15 @@ class Constraint() :
     def GetType(self) : return self.__type
     
     def GetObjVal(self) : 
-         if 'pp' in self.__type and self.maxWeights : return pulp.lpSum(self.prodVars )
-         elif self.__type == 'prBin' and self.maxWeights : return pulp.lpSum(np.multiply(self.wish, self.dispo))
-         else : return 0
+        if not self.maxWeights : return 0
+        elif 'pp' in self.__type : return pulp.lpSum(self.prodVars )
+        elif 'pr' in self.__type : return pulp.lpSum(np.multiply(self.wish, self.dispo))
+        else : return 0
     
     def DefineConstraint(self, placement, officeData, persoData ) :
         if 'pp' in self.__type  : self.DefinePPConstraint( placement, officeData, persoData )
         elif self.__type == 'prBin' : self.DefinePRBinConstraint( placement, officeData, persoData )
+        elif self.__type == 'prCat' : self.DefinePRCatConstraint( placement, officeData, persoData )
         else : raise RuntimeError( 'DefineConstraint : Unknown type for Constraint : ', self.__type )
         
     def DefinePPConstraint(self, placement, officeData, persoData ) : 
@@ -50,16 +52,41 @@ class Constraint() :
         self.wish = persoData.loc[:, self.label].values
         self.dispo = np.dot(placement, officeData.loc[:, self.label])
 
+    def DefinePRCatConstraint( self, placement, officeData, persoData ) :
+        weightName = 'weight' + self.label[0].upper() + self.label[1:]
+    
+        #returns which property has the office
+        officeFilter = pd.pivot_table(officeData.loc[:,[self.label]], columns=self.label, index=officeData.index, aggfunc=len).fillna(0)
+    
+        #return the weight that a person attribute to being allocaetd category i
+        persoFilter = pd.pivot_table(persoData, values=weightName, columns=self.label, index=persoData.index, aggfunc='sum').fillna(0)
+    
+        commonLabels = list(set(persoFilter.columns).intersection(officeFilter.columns))
+        officeFilter = officeFilter.loc[:,commonLabels].values
+        self.wish = persoFilter.loc[:,commonLabels].values
+        
+        #return the properties which have been allocated to each perso
+        self.dispo = np.dot( placement, officeFilter )
+    
+
+
     def SetConstraint(self, model) :
         if 'pp' in self.__type : SetPPConstraint( model, self.wish, self.dispo, self.prodVars, self.binVars, self.K, self.bound, self.valBound )
         elif self.__type == 'prBin' and self.bound!=0 : self.SetPRBinConstraint( model )
+        elif self.__type == 'prCat' and self.bound != 0 : self.SetPRCatConstraint(model)
         #else : raise RuntimeError( 'SetConstraint : Unknown type for Constraint : ', self.__type )
         
-    def SetPRBinConstraint( model ) : 
+    def SetPRBinConstraint(self, model ) : 
         for i in range(len(self.wish)) :
             if self.bound>0 : model += self.wish[i]<= self.valBound
             elif self.bound < 0 : model += self.wish[i] >= self.valBound
-        
+    
+    def SetPRCatConstraint(self, model ) :
+        for line in self.wish : 
+            for val in line :
+                if self.bound>0 : model += val <= self.bound
+                elif self.bound<0 : model += val >= self.bound
+                
 #==========
 def SetPRConstraint( model, weights, bound, up=True ) : 
     s = weights.shape
@@ -522,8 +549,8 @@ def RoomOptimisation( officeData, persoData,
 #
 
 #    # Create the amount of happyness for floor like variables
-    spatialCatWeight = np.array([])
-    if prCatTag : spatialCatWeight =  GetPRCatMatching( officeOccupancy, officeData, persoData, prCatTag )
+ #   spatialCatWeight = np.array([])
+   # if prCatTag : spatialCatWeight =  GetPRCatMatching( officeOccupancy, officeData, persoData, prCatTag )
 #     
     #--------------------------------------------
     #Define the optimisation model
@@ -535,7 +562,7 @@ def RoomOptimisation( officeData, persoData,
             np.sum(delta)
   #          + spatialBinWeights.sum() 
 #            + pulp.lpSum(happynessNeighbour) 
-            + np.sum(spatialCatWeight)
+ #            + np.sum(spatialCatWeight)
             + pulp.lpSum( c.GetObjVal() for c in constTag )
 #            + pulp.lpSum(ppBinPulpVars)
             )
@@ -560,11 +587,11 @@ def RoomOptimisation( officeData, persoData,
     #SetPPConstraint( model, ppBinWish, ppBinDispo, ppBinPulpVars, ppBinPulpBinVars, ppBinK )
 
 
-    for (labels, value, isUpper ) in prConstBinTag : 
-        SetPRBinConstraint( model, officeOccupancy, officeData, persoData, labels, value, up=isUpper )
-    
-    for ( labels, value, isUpper ) in prConstCatTag :
-        SetPRCatConstraint( model, officeOccupancy, officeData, persoData, labels, value, up=isUpper )
+#    for (labels, value, isUpper ) in prConstBinTag : 
+#        SetPRBinConstraint( model, officeOccupancy, officeData, persoData, labels, value, up=isUpper )
+#    
+#    for ( labels, value, isUpper ) in prConstCatTag :
+#        SetPRCatConstraint( model, officeOccupancy, officeData, persoData, labels, value, up=isUpper )
 #    # legs counts the number of tall people per leftoffice
 #    roomTags.append( 'isLeft'  )
 #    servTags = [ x for x in ['isTall'] if x in persoProp]
@@ -998,7 +1025,6 @@ class TestRoomOptimisation( unittest.TestCase ):
         self.assertEqual(np.linalg.det(np.array([y[:2,0], room2])), 1 )
         
     def test_resultBinSpat(self) : 
-        spatialTag = ['mur', 'window' ]
         constTag = [ Constraint( 'prBin', 'mur', True ), Constraint('prBin', 'window', True)]
         model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag )
         
@@ -1010,7 +1036,8 @@ class TestRoomOptimisation( unittest.TestCase ):
 
     def test_resultCatSpat(self) : 
         spatialTag = ['etage']
-        model, placement = RoomOptimisation( self.officeData, self.persoData, prCatTag=spatialTag )
+        constTag = [Constraint('prCat', 'etage', True )]
+        model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag )
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 1.5 )
@@ -1024,7 +1051,6 @@ class TestRoomOptimisation( unittest.TestCase ):
     def test_resultBinSpatNegWeight(self) :
         persoData = pd.DataFrame({'window':[1,0], 'mur':[0, -0.5]})
         officeData = pd.DataFrame({'window':[1, 0], 'mur':[0, 1]})
-        spatialTag = ['mur', 'window' ]
         constTag = [ Constraint( 'prBin', 'mur', True ), Constraint( 'prBin', 'window', True)]
         model, placement = RoomOptimisation( officeData, persoData, constTag=constTag )
         
