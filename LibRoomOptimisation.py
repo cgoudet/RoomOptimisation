@@ -22,7 +22,7 @@ def SetPRBinConstraint( model, placement, officeData, persoData, tags, bound, up
 #==========
 def SetPRCatConstraint( model, placement, officeData, persoData, tags, bound, up=True ) :
     weights =  GetPRCatMatching( placement, officeData, persoData, tags )
-    for w in weights :  SetPRConstraint( model, w, bound, up)
+    SetPRConstraint( model, weights, bound, up)
         
  
 #===========
@@ -152,7 +152,8 @@ def GetPRCatMatching( placement, officeData, persoData, properties ) :
     Return the weighted agreement between person preferences and office characteristics of categorical variables
     The category the person wants is in the column [option] and the weight in the column [weightOption]
     """
-    result = [ GetPRSingleCatMatching( placement, officeData, persoData, opt ) for opt in properties ]      
+    result = [ GetPRSingleCatMatching( placement, officeData, persoData, opt ) for opt in properties ]
+    if len(result)==1 : result = result
     return np.array(result).T
 
 #==========
@@ -398,6 +399,7 @@ def RoomOptimisation( officeData, persoData,
                      prBinTag=[],
                      prCatTag=[],
                      prConstBinTag=[],
+                     prConstCatTag=[],
                      ppCatTag=[],
                      ppBinTag=[],
                      minimize=True,
@@ -506,9 +508,11 @@ def RoomOptimisation( officeData, persoData,
     SetPPConstraint( model, ppBinWish, ppBinDispo, ppBinPulpVars, ppBinPulpBinVars, ppBinK )
 
 
-    for (label, value, isUpper ) in prConstBinTag : 
-        SetPRBinConstraint( model, officeOccupancy, officeData, persoData, label, value, up=isUpper )
-        
+    for (labels, value, isUpper ) in prConstBinTag : 
+        SetPRBinConstraint( model, officeOccupancy, officeData, persoData, labels, value, up=isUpper )
+    
+    for ( labels, value, isUpper ) in prConstCatTag :
+        SetPRCatConstraint( model, officeOccupancy, officeData, persoData, labels, value, up=isUpper )
 #    # legs counts the number of tall people per leftoffice
 #    roomTags.append( 'isLeft'  )
 #    servTags = [ x for x in ['isTall'] if x in persoProp]
@@ -919,7 +923,9 @@ class TestRoomOptimisation( unittest.TestCase ):
                                        'service':['RH', 'SI', ''], 
                                        'weightService':[3,6,2],
                                        'inPhone':[0, 1, 1],
-                                       'weightPhone':[-2, 0, 1]
+                                       'weightPhone':[-2, 0, 1],
+                                       'weightEtage':[1, 0, 0.5],
+
                                        })
         self.officeData =pd.DataFrame({'roomID':[0,0,0],
                                        'window':[1, 0, 0],
@@ -973,16 +979,16 @@ class TestRoomOptimisation( unittest.TestCase ):
 
     def test_resultCatSpat(self) : 
         spatialTag = ['etage']
-        
-        with self.assertRaises(RuntimeError) :
-            model, placement = RoomOptimisation( self.officeData, self.persoData, prCatTag=spatialTag )
-        
-        self.persoData['weightEtage'] = [1, 0, 0.5]
         model, placement = RoomOptimisation( self.officeData, self.persoData, prCatTag=spatialTag )
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 1.5 )
         self.assertEqual( placement[1][1].varValue, 1)
+        
+        self.persoData.drop('weightEtage',inplace=True, axis=1)
+        with self.assertRaises(RuntimeError) :
+            model, placement = RoomOptimisation( self.officeData, self.persoData, prCatTag=spatialTag )
+        
         
     def test_resultBinSpatNegWeight(self) :
         persoData = pd.DataFrame({'window':[1,0], 'mur':[0, -0.5]})
@@ -1049,6 +1055,16 @@ class TestRoomOptimisation( unittest.TestCase ):
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), None )
         self.assertEqual(y[0][0], 0)
+
+    def test_resultPRConstCat(self) : 
+        self.persoData['etage']=[2, 1, 2]
+        tag=[(['etage'], 0, True)]    
+        model, placement = RoomOptimisation( self.officeData, self.persoData, prConstCatTag=tag, roomTag=['roomID'] )
+        y = ArrayFromPulpMatrix2D( np.array(placement) )
+        
+        self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
+        self.assertEqual(pulp.value(model.objective), None )
+        self.assertEqual(y[2][1], 0)
 
 #==========
 if __name__ == '__main__':
