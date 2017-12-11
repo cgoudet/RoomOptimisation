@@ -34,7 +34,7 @@ def ArrayFromPulpMatrix2D( x ) :
     
     for i  in range(nRows):
         for j in range(nCols) :
-            result[i][j] = x[i][j].varValue
+            result[i][j] = pulp.value(x[i][j])
 
     return result
 #==========
@@ -389,8 +389,8 @@ def SetPPConstraint( model, wish, dispo, pulpMaxVars, pulpBinVars, K, bound = 0,
             model += pulpMaxVars[i][j] <= K * dispo[i][j]
             model += pulpMaxVars[i][j] >= - K * dispo[i][j]
             model += pulpMaxVars[i][j] >= -2 * K + wish[i][j] + 2*K * pulpBinVars[i][j]
-            if bound>0 : model += pulpMaxVars[i][j] <= value - 2*K*pulpBinVars[i][j] + 2*K
-            elif bound<0 : model += pulpMaxVars[i][j] >= value + 2*K*pulpBinVars[i][j] - 2*K
+            if bound>0 : model += pulpMaxVars[i][j] <= ( value - K )*pulpBinVars[i][j] + K
+            elif bound<0 :model += pulpMaxVars[i][j] >= (value + K)*pulpBinVars[i][j] - K
 
 #==========
 def RoomOptimisation( officeData, persoData,
@@ -444,7 +444,7 @@ def RoomOptimisation( officeData, persoData,
         s = wish.shape
         pulpVars =  pulp.LpVariable.matrix( opt+'Max', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
         pulpBinVars =  pulp.LpVariable.matrix( opt+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
-        K = np.fabs(persoData['weight'+opt[0].upper()+opt[1:]]).sum()
+        K = max(np.fabs(persoData['weight'+opt[0].upper()+opt[1:]]).sum(),2)
         ppCatVars.append( (pulpVars, pulpBinVars, wish, dispo, K))
         
     pulp.lpSum(None)
@@ -458,7 +458,7 @@ def RoomOptimisation( officeData, persoData,
         s = ppBinWish.shape
         ppBinPulpVars =  pulp.LpVariable.matrix( 'ppBinMax', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
         ppBinPulpBinVars =  pulp.LpVariable.matrix( 'ppBinBin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
-        ppBinK = np.fabs(persoData[['weight' + v[0].upper() + v[1:] for v in ppBinTag]]).values.sum()   
+        ppBinK = max(np.fabs(persoData[['weight' + v[0].upper() + v[1:] for v in ppBinTag]]).values.sum(), 2 )
 
 
 #    # Define the happyness of one person from its neighbours
@@ -805,29 +805,26 @@ class TestSetConstraint(unittest.TestCase):
         self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
         self.assertEqual(pulp.value(self.model.objective), 1 )
 
-#    def test_PPConstraintUpBound(self) :
-#        tag='phone'
-#        self.persoData['weightPhone']=[1, 0, 0]
-#        
-#        print('\npersoData : ', self.persoData[['inPhone', 'weightPhone']])
-#        print('\nofficeData : ', self.officeData[['etage', 'roomID']] )
-#        (wish, dispo) = GetPPBinMatching(self.pulpVars, self.officeData, self.persoData, [tag] )
-#        s = wish.shape
-#
-#        pulpMaxVars =  pulp.LpVariable.matrix( 'ppBin', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
-#        K = np.fabs(self.persoData[['weight' + tag[0].upper() + tag[1:]]]).values.sum()
-#        pulpBinVars =  pulp.LpVariable.matrix( tag+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
-#        
-#        self.model += pulp.lpSum(pulpMaxVars)
-#        
-#        SetPPConstraint( self.model, wish, dispo, pulpMaxVars, pulpBinVars, K , bound=1, value=0) 
-#        
-#        self.model.solve()        
-#        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
-#        self.assertEqual(pulp.value(self.model.objective), 1 )
-#
-#        x = ArrayFromPulpMatrix2D(self.pulpVars)
-#        self.assertEqual(x[0][0], 1)
+    def test_PPConstraintUpBound(self) :
+        tag='phone'
+        self.persoData['weightPhone']=[1, 0, 0]
+
+        (wish, dispo) = GetPPBinMatching(self.pulpVars, self.officeData, self.persoData, [tag], roomID=['roomID'] )
+        s = wish.shape
+
+        pulpMaxVars =  pulp.LpVariable.matrix( 'ppBin', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
+        K = max(np.fabs(self.persoData[['weight' + tag[0].upper() + tag[1:]]]).values.sum(), 2)
+        pulpBinVars =  pulp.LpVariable.matrix( tag+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
+        
+        self.model += pulp.lpSum(pulpMaxVars)
+        
+        SetPPConstraint( self.model, wish, dispo, pulpMaxVars, pulpBinVars, K , bound=1, value=0) 
+        self.model.solve()  
+        x = ArrayFromPulpMatrix2D(self.pulpVars)
+        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        self.assertEqual(pulp.value(self.model.objective), 0 )
+        self.assertEqual(x[0][0], 1)
 #
 #
 #    def test_PPConstraintLowBound(self) :
