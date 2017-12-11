@@ -8,7 +8,7 @@ from PIL import Image, ImageFont, ImageDraw
 
 class Constraint() :
     def __init__(self, typ, label, maxWeights = False, bound=0, valBound=0, roomTag=[] ):
-        self.acceptedTypes = ['ppBin', 'ppCat', 'prBin', 'prCat']
+        self.acceptedTypes = ['ppBin', 'ppCat', 'prBin', 'prCat', 'prBinCat']
         if typ not in self.acceptedTypes : raise RuntimeError('Constraint : Wrong type for constraint. Accepted types : ' + ' '.join(self.acceptedTypes))
         self.__type = typ
         
@@ -30,6 +30,7 @@ class Constraint() :
     def GetObjVal(self) : 
         if not self.maxWeights : return 0
         elif 'pp' in self.__type : return pulp.lpSum(self.prodVars )
+        elif  self.__type == 'prBinCat' : return pulp.lpSum( np.dot(self.wish.T, self.dispo ))
         elif 'pr' in self.__type : return pulp.lpSum(np.multiply(self.wish, self.dispo))
         else : return 0
     
@@ -37,6 +38,7 @@ class Constraint() :
         if 'pp' in self.__type  : self.DefinePPConstraint( placement, officeData, persoData )
         elif self.__type == 'prBin' : self.DefinePRBinConstraint( placement, officeData, persoData )
         elif self.__type == 'prCat' : self.DefinePRCatConstraint( placement, officeData, persoData )
+        elif self.__type == 'prBinCat' : self.DefinePRBinCatConstraint( placement, officeData, persoData )
         else : raise RuntimeError( 'DefineConstraint : Unknown type for Constraint : ', self.__type )
         
     def DefinePPConstraint(self, placement, officeData, persoData ) : 
@@ -48,6 +50,11 @@ class Constraint() :
         self.K = max(np.fabs(persoData['weight'+self.label[0].upper()+self.label[1:]]).sum(),self.K)
         return self
     
+    def DefinePRBinCatConstraint( placement, officeData, persoData ) :
+        self.wish = persoData.loc[:, self.label].values
+        officeFilter = pd.pivot_table(officeData.loc[:,[self.label]], columns=self.label, index=officeData.index, aggfunc=len).fillna(0)
+        self.dispo = np.dot( placement, officeFilter )
+        
     def DefinePRBinConstraint( self, placement, officeData, persoData ) :
         self.wish = persoData.loc[:, self.label].values
         self.dispo = np.dot(placement, officeData.loc[:, self.label])
@@ -74,8 +81,15 @@ class Constraint() :
         if 'pp' in self.__type : SetPPConstraint( model, self.wish, self.dispo, self.prodVars, self.binVars, self.K, self.bound, self.valBound )
         elif self.__type == 'prBin' and self.bound!=0 : self.SetPRBinConstraint( model )
         elif self.__type == 'prCat' and self.bound != 0 : self.SetPRCatConstraint(model)
+        elif self.__type == 'prBinCat' and self.bound != 0 : self.SetPRBinCatConstraint(model)
         #else : raise RuntimeError( 'SetConstraint : Unknown type for Constraint : ', self.__type )
         
+    def SetPRBinCatConstraint( self, model ) :
+        tot = np.dot( self.wish.T, self.dispo )
+        for val in tot :
+            if self.bound>0 : model += val <= self.bound
+            elif self.bound<0 : model += val >= self.bound
+
     def SetPRBinConstraint(self, model ) : 
         tot = np.multiply(self.wish, self.dispo)
         for val in tot :
@@ -91,9 +105,23 @@ class Constraint() :
                 
                 
     def GetHappyness( self, placement, officeData, persoData ) :
+        if not self.maxWeights  : return 0
         x = ArrayFromPulpMatrix2D( placement )
-        if 'pr' in self.__type : return self.GetPRHappyness( x, officeData, persoData )
+        if self.label == 'prBinCat' : return self.GetPRBinCatHappyness( x, officeData, persoData )
+        elif 'pr' in self.__type : return self.GetPRHappyness( x, officeData, persoData )
         elif 'pp' in self.__type : return self.GetPPHappyness( x, officeData, persoData)
+        
+    def GetPRBinCatHappyness( self, placement, officeData, persoData ) : 
+        self.DefinePRBinCatConstraint( placement, officeData, persoData )
+        persoFilter = persoData.loc[:,self.label]
+        officeFilter = pd.pivot_table(officeData.loc[:,self.roomTag], columns=self.roomTag, index=officeData.index, aggfunc=len).fillna(0) 
+        
+        self.wish = persoFilter
+        self.dispo = np.dot( placement, officeFilter )
+        self.dispo = np.dot( self.dispo, officeFilter.T)
+        self.dispo = np.dot( self.dispo, placement.T)
+        self.dispo = np.dot( self.dispo, persoFilter.T)
+        return np.myltiply( self.wish, self.dispo )
         
     def GetPRHappyness( self, placement, officeData, persoData ) : 
         if self.label == 'prBin' : self.DefinPRBinConstraint(placement, officeData, persoData )
