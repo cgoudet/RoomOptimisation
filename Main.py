@@ -82,11 +82,11 @@ def main():
     
     officeFileName = 'OfficeProperties.csv'
     #Read the input data for offices
-    officeData = ImportOffices( officeFileName )
+    officeData = ImportOffices( )
     #PrintOfficeNumber(officeData)
     
     persoFileName = 'PersoProperties.csv'
-    persoData = ImportPerso( persoFileName)
+    persoData = ImportPerso( )
     
     factors = {'rawWindow':1, 'rawClim':-1, 'rawSonnerie':-1, 'rawPassage':-1 }
     for k, v in factors.items() : TransformScale( persoData, k, k.replace('raw', '').lower(), v==1)
