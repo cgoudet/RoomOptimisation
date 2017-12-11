@@ -28,11 +28,12 @@ class Constraint() :
     
     def GetObjVal(self) : 
          if 'pp' in self.__type and self.maxWeights : return pulp.lpSum(self.prodVars )
+         elif self.__type == 'prBin' and self.maxWeights : return pulp.lpSum(np.multiply(self.wish, self.dispo))
          else : return 0
     
     def DefineConstraint(self, placement, officeData, persoData, roomTag=[] ) :
         if 'pp' in self.__type  : self.DefinePPConstraint( placement, officeData, persoData, roomTag )
-        
+        elif self.__type == 'prBin' : self.DefinePRBinConstraint( placement, officeData, persoData, roomTag)
         else : raise RuntimeError( 'DefineConstraint : Unknown type for Constraint : ', self.__type )
         
     def DefinePPConstraint(self, placement, officeData, persoData, roomTag=[] ) : 
@@ -43,11 +44,20 @@ class Constraint() :
         self.binVars =  pulp.LpVariable.matrix( self.label+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
         self.K = max(np.fabs(persoData['weight'+self.label[0].upper()+self.label[1:]]).sum(),self.K)
         return self
+    
+    def DefinePRBinConstraint( self, placement, officeData, persoData, roomTag=[] ) :
+        self.wish = persoData.loc[:, self.label].values
+        self.dispo = np.dot(placement, officeData.loc[:, self.label])
 
     def SetConstraint(self, model) :
         if 'pp' in self.__type : SetPPConstraint( model, self.wish, self.dispo, self.prodVars, self.binVars, self.K, self.bound, self.valBound )
-        else : raise RuntimeError( 'SetConstraint : Unknown type for Constraint : ', self.__type )
+        elif self.__type == 'prBin' and self.bound!=0 : self.SetPRBinConstraint( model )
+        #else : raise RuntimeError( 'SetConstraint : Unknown type for Constraint : ', self.__type )
         
+    def SetPRBinConstraint( model ) : 
+        for i in range(len(self.wish)) :
+            if self.bound>0 : model += self.wish[i]<= self.valBound
+            elif self.bound < 0 : model += self.wish[i] >= self.valBound
         
 #==========
 def SetPRConstraint( model, weights, bound, up=True ) : 
@@ -434,9 +444,7 @@ def SetPPConstraint( model, wish, dispo, pulpMaxVars, pulpBinVars, K, bound = 0,
             model += pulpMaxVars[i][j] >= - K * dispo[i][j]
             model += pulpMaxVars[i][j] >= -2 * K + wish[i][j] + 2*K * pulpBinVars[i][j]
             if bound>0 : model += pulpMaxVars[i][j] <= ( value - K )*pulpBinVars[i][j] + K
-            elif bound<0 : 
-                print('negBound', pulpMaxVars[i][j] >= (value + K)*pulpBinVars[i][j] - K); 
-                model += pulpMaxVars[i][j] >= (value + K)*pulpBinVars[i][j] - K
+            elif bound<0 :  model += pulpMaxVars[i][j] >= (value + K)*pulpBinVars[i][j] - K
 
 #==========
 def RoomOptimisation( officeData, persoData,
@@ -484,8 +492,8 @@ def RoomOptimisation( officeData, persoData,
 
  
     # Define the happyness of one person from its spatial properties. The value of happyness is weight*isAttributedValues
-    spatialBinWeights = np.array([])
-    if prBinTag : spatialBinWeights = GetPRBinMatching( officeOccupancy, officeData, persoData, prBinTag )
+#    spatialBinWeights = np.array([])
+#    if prBinTag : spatialBinWeights = GetPRBinMatching( officeOccupancy, officeData, persoData, prBinTag )
  
     for c in constTag  : c.DefineConstraint( officeOccupancy, officeData, persoData, roomTag)
 
@@ -524,7 +532,7 @@ def RoomOptimisation( officeData, persoData,
     #Objective function : 
     model += (
             np.sum(delta)
-            + spatialBinWeights.sum() 
+  #          + spatialBinWeights.sum() 
 #            + pulp.lpSum(happynessNeighbour) 
             + np.sum(spatialCatWeight)
             + pulp.lpSum( c.GetObjVal() for c in constTag )
@@ -990,7 +998,8 @@ class TestRoomOptimisation( unittest.TestCase ):
         
     def test_resultBinSpat(self) : 
         spatialTag = ['mur', 'window' ]
-        model, placement = RoomOptimisation( self.officeData, self.persoData, prBinTag=spatialTag )
+        constTag = [ Constraint( 'prBin', 'mur', True ), Constraint('prBin', 'window', True)]
+        model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag )
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 1.5 )
@@ -1015,7 +1024,8 @@ class TestRoomOptimisation( unittest.TestCase ):
         persoData = pd.DataFrame({'window':[1,0], 'mur':[0, -0.5]})
         officeData = pd.DataFrame({'window':[1, 0], 'mur':[0, 1]})
         spatialTag = ['mur', 'window' ]
-        model, placement = RoomOptimisation( officeData, persoData, prBinTag=spatialTag )
+        constTag = [ Constraint( 'prBin', 'mur', True ), Constraint( 'prBin', 'window', True)]
+        model, placement = RoomOptimisation( officeData, persoData, constTag=constTag )
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 0.5 )
@@ -1079,28 +1089,28 @@ class TestRoomOptimisation( unittest.TestCase ):
         self.assertEqual(pulp.value(model.objective), 1 )
         self.assertEqual(y[0][0], 1.)
 
-    def test_resultPPCatLowBound(self):
-        self.persoData['weightService']=[1000,0,1000]
-        self.persoData['service'] = ['RH', 'Dum', 'SI']
-        print(self.persoData[['service', 'inService', 'weightService']])
-        print(self.officeData['etage'])
-        
-        constTag = [Constraint('ppCat', 'service', maxWeights=False, bound=0, valBound=1 )]
-        model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag, roomTag=['etage'] )
-        
-        (wish, dispo) = GetPPCatSingleMatching( np.diag([1,1,1]), self.officeData, self.persoData, 'service' )
-        print(wish)
-        print(dispo)
-
-        
-        self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
-        self.assertEqual(pulp.value(model.objective), None )
-        
-
-        
-        y = ArrayFromPulpMatrix2D( np.array(placement) )
-        print(y)
-        self.assertEqual(y[1][1], 1)
+#    def test_resultPPCatLowBound(self):
+#        self.persoData['weightService']=[1000,0,1000]
+#        self.persoData['service'] = ['RH', 'Dum', 'SI']
+#        print(self.persoData[['service', 'inService', 'weightService']])
+#        print(self.officeData['etage'])
+#        
+#        constTag = [Constraint('ppCat', 'service', maxWeights=False, bound=0, valBound=1 )]
+#        model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag, roomTag=['etage'] )
+#        
+#        (wish, dispo) = GetPPCatSingleMatching( np.diag([1,1,1]), self.officeData, self.persoData, 'service' )
+#        print(wish)
+#        print(dispo)
+#
+#        
+#        self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
+#        self.assertEqual(pulp.value(model.objective), None )
+#        
+#
+#        
+#        y = ArrayFromPulpMatrix2D( np.array(placement) )
+#        print(y)
+#        self.assertEqual(y[1][1], 1)
 
     def test_resultPRConstBin(self) : 
         tag=[(['window'], 0, True)]    
