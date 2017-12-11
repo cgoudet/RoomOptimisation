@@ -917,7 +917,9 @@ class TestRoomOptimisation( unittest.TestCase ):
                                        'mur':[0, 0.5, 0],
                                        'etage':[1, 1, 1],
                                        'service':['RH', 'SI', ''], 
-                                       'weightService':[3,6,2]
+                                       'weightService':[3,6,2],
+                                       'inPhone':[0, 1, 1],
+                                       'weightPhone':[-2, 0, 1]
                                        })
         self.officeData =pd.DataFrame({'roomID':[0,0,0],
                                        'window':[1, 0, 0],
@@ -1010,11 +1012,10 @@ class TestRoomOptimisation( unittest.TestCase ):
         self.assertEqual(pulp.value(model.objective), 9 )
 
     def test_resultPPCatMatchingNegWeight(self) :
-        persoData = pd.DataFrame({'inService':['RH','SI','RH'], 'service':['SI','SI', 'RH'], 'weightService':[-3,0,-6]})
-        officeData = pd.DataFrame({'roomID':[0,0,0]})
+        self.persoData['weightService']=[-3, 0, -6]
+        self.persoData['service'] = ['SI', 'RH', 'SI']
         spatialTag = ['service' ]
-        model, placement = RoomOptimisation( officeData, persoData, ppCatTag=spatialTag )
-        y = ArrayFromPulpMatrix2D( np.array(placement) )
+        model, placement = RoomOptimisation( self.officeData, self.persoData, ppCatTag=spatialTag, roomTag=['roomID'] )
 
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), -9 )
@@ -1030,21 +1031,24 @@ class TestRoomOptimisation( unittest.TestCase ):
         self.assertEqual(pulp.value(model.objective), 6 )
 
     def test_resultPPBinMatching(self) :
-        persoData = pd.DataFrame({'inPhone':[0, 1, 1], 'weightPhone':[-2, 0, 1] })
-        officeData = pd.DataFrame({'roomID':[1,0,0]})    
+        self.officeData['roomID'] = [1,0,0]    
         tag=['phone']
         
-        model, placement = RoomOptimisation( officeData, persoData, ppBinTag=tag )
+        model, placement = RoomOptimisation( self.officeData, self.persoData, ppBinTag=tag, roomTag=['roomID'] )
         y = ArrayFromPulpMatrix2D( np.array(placement) )
 
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 1 )
-
-
-
         self.assertEqual(y[0][0], 1.)
 
-
+    def test_resultPRConstBin(self) : 
+        tag=[(['window'], 0, True)]    
+        model, placement = RoomOptimisation( self.officeData, self.persoData, prConstBinTag=tag, roomTag=['roomID'] )
+        y = ArrayFromPulpMatrix2D( np.array(placement) )
+        
+        self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
+        self.assertEqual(pulp.value(model.objective), None )
+        self.assertEqual(y[0][0], 0)
 
 #==========
 if __name__ == '__main__':
