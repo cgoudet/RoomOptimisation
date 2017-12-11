@@ -8,12 +8,12 @@ Created on Thu Dec  7 10:28:08 2017
 from PIL import Image
 from PIL import ImageFont
 from PIL import ImageDraw 
-
+import time
 
 import pandas as pd
 import numpy as np
 from LibRoomOptimisation import RoomOptimisation, PrintOptimResults, ArrayFromPulpMatrix2D
-from LibRoomOptimisation import GetPRCatMatching
+from LibRoomOptimisation import GetPRCatMatching, Constraint
 import pulp
 
 def PrintOfficeNumber(officeData):
@@ -44,23 +44,24 @@ def ImportOffices( fileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Pr
     return data
 
 #==========
-def ImportPerso( fileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoProperties.csv' ):
+def ImportPerso( fileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoPref.csv' ):
     
-    naInterpret = {'perso1':'', 
-                   'perso2':'', 
-                   'perso3':'', 
+    naInterpret = {
+            'rawPerso1':'', 
+                   'rawPerso2':'', 
+                   'rawPerso3':'', 
                    'rawEtage':0,
                    'rawWindow':0,
                    'rawClim':0,
-                   'rawSonnerie':0,
                    'rawPassage':0,
                    }
     
-    selectColumns = ['inService', 'perso1', 'perso2', 'perso3', 'rawEtage', 'rawWindow', 'rawClim', 'rawSonnerie', 'rawPassage', 'Nom']
+    selectColumns = ['rawPerso1', 'rawPerso2', 'rawPerso3', 'rawEtage', 'rawWindow', 'rawClim', 'rawPassage', 'Nom']
                       
     data = pd.read_csv( fileName, 
                        header=1,
-                       usecols=selectColumns).fillna(naInterpret)
+                       usecols=selectColumns
+                       ).fillna(naInterpret)
     return data
 
 #==========
@@ -70,9 +71,9 @@ def TransformScale( data, name, newName, increasing=True ) :
 
 #==========
 def EtageMatching( x ) :
-    if x == 0 : return [0, 0]
-    elif x < 4 : return [1, 7-2*x]
-    else : return [2, (x-3)*2]
+    if x in [0, 3]: return [0, 0]
+    elif x < 3 : return [1, 6-3*x]
+    else : return [2, (x-3)*3]
 #==========
 def TransformEtage( data, name ) :
     data['etage'], data['weightEtage'] = zip(*data[name].map(EtageMatching))
@@ -83,20 +84,27 @@ def main():
     officeFileName = 'OfficeProperties.csv'
     #Read the input data for offices
     officeData = ImportOffices( )
+    print(officeData.head())
     #PrintOfficeNumber(officeData)
     
     persoFileName = 'PersoProperties.csv'
     persoData = ImportPerso( )
     
-    factors = {'rawWindow':1, 'rawClim':-1, 'rawSonnerie':-1, 'rawPassage':-1 }
+    factors = {'rawWindow':1, 'rawClim':-1, 'rawPassage':1 }
     for k, v in factors.items() : TransformScale( persoData, k, k.replace('raw', '').lower(), v==1)
+    
     persoData.loc[:,'Nom'] = persoData['Nom'].apply( lambda x : x.split('.')[0] +'.')
     TransformEtage( persoData, 'rawEtage' )
     for i in range(1, 4) :
         persoData['weightPerso'+str(i)] = 7-2*i
         persoData['inPerso'+str(i)] = persoData['Nom']
-    print(persoData.head())
-
+        persoData['perso'+str(i)] = persoData['rawPerso'+str(i)]
+        
+    
+    persoProp = pd.read_csv('C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoProp.csv')
+    print(persoProp.head())
+    persoData = pd.merge( persoData, persoProp, on='Nom')
+    print(persoData.head())   
 
 
 #    np.random.seed(12435)
@@ -133,21 +141,25 @@ def main():
     #diversity
     #model, placement = RoomOptimisation( officeData, persoData , diversityTag=['inService'], roomTag=['roomID'])
     
-    prBinTag = ['sonnerie', 'window', 'clim', 'passage']
+    prBinTag = [ 'window', 'clim', 'passage']
     prCatTag = ['etage']
     ppBinTag = []
     ppCatTag = ['perso1']
+    constTag = [Constraint('ppCat', 'perso1', True ),
+                Constraint('ppCat', 'perso2', True ),
+                Constraint('ppCat', 'perso3', True ),
+                ]
+    t = time.time()
     model, placement = RoomOptimisation( officeData, persoData 
                                         , diversityTag=['inService']
                                         , roomTag=['roomID']
                                         , prBinTag=prBinTag
                                         , prCatTag=prCatTag
-                                        , ppBinTag=ppBinTag
-                                        , ppCatTag=ppCatTag
+                                        , constTag=constTag
                                         , printResults=True
                                         )
     
-    
+    print('elapsed : ', t -time.time())
 
 
     
