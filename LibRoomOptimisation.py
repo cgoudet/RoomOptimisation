@@ -1055,6 +1055,16 @@ class TestRoomOptimisation( unittest.TestCase ):
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 6 )
 
+    def test_resultPPCatUpBound(self):
+        constTag = [Constraint('ppBin', 'phone', maxWeights=False, bound=1, valBound=0 )]
+        model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag )
+        
+        self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
+        self.assertEqual(pulp.value(model.objective), None )
+        
+        y = ArrayFromPulpMatrix2D( np.array(placement) )
+        self.assertEqual(y[0][0], 1)
+
     def test_resultPPBinMatching(self) :
         self.officeData['roomID'] = [1,0,0]    
         constTag = [Constraint('ppBin', 'phone', maxWeights=True )]
