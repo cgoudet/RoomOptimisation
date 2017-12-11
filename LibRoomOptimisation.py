@@ -24,181 +24,6 @@ def SetPRCatConstraint( model, placement, officeData, persoData, tags, bound, up
     weights =  GetPRCatMatching( placement, officeData, persoData, tags )
     for w in weights :  SetPRConstraint( model, w, bound, up)
         
-#==========
-class TestSetConstraint(unittest.TestCase):
-    def setUp( self ) : 
-        self.persoData = pd.DataFrame({'inPhone':[0, 1, 1], 
-                                       'weightPhone':[-2, 0, 1],
-                                       'window' : [1, 0, 0],
-                                       'clim' : [0, 0, 1],
-                                       'etage' : [1, 0, 2],
-                                       'weightEtage': [1, 1, 0]
-                                        })
-        self.officeData = pd.DataFrame({'roomID':[1,0,0],
-                                        'window':[1, 0, 0],
-                                        'clim':[0, 0, 1],
-                                        'etage':[1, 0, 0],
-                                        })    
-        
-        self.pulpVars = pulp.LpVariable.matrix("officeOccupancy" ,(np.arange(3), np.arange(3)),cat='Binary')
-        self.model = pulp.LpProblem("Office setting maximizing happyness", pulp.LpMaximize)
-
-        #SetConstraints
-        for s  in np.sum(self.pulpVars, axis=0) : self.model += s <= 1
-        for s in np.sum(self.pulpVars, axis=1) : self.model += s == 1    
-    
-    def test_PRCatConstraintUp(self):
-        properties = ['etage']
-        bound = 0
-        weights = GetPRCatMatching( self.pulpVars, self.officeData, self.persoData, properties)
-        SetPRConstraint( self.model, weights, bound, up=True)
-        self.model.solve()        
-        x = ArrayFromPulpMatrix2D(self.pulpVars)
-        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
-        self.assertEqual(x[1][0], 1)
-
-    def test_PRCatConstraintUpInf(self):
-        properties = ['etage']
-        bound = 0
-        self.persoData.loc[0,'etage'] = 0
-        weights = GetPRCatMatching( self.pulpVars, self.officeData, self.persoData, properties)
-        SetPRConstraint( self.model, weights, bound, up=True)
-        self.model.solve()        
-        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
-        
-    def test_PRCatConstraintLow(self):
-        properties = ['etage']
-        bound=1
-        weights = GetPRCatMatching( self.pulpVars, self.officeData, self.persoData, properties)
-        SetPRConstraint(self.model, weights, bound, up=False)
-        self.model.solve()
-        x = ArrayFromPulpMatrix2D(self.pulpVars)
-        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
-        self.assertEqual(x[0][0], 1)
-
-    def test_PPConstraint(self) :
-        tag='phone'
-        
-        (wish, dispo) = GetPPBinMatching(self.pulpVars, self.officeData, self.persoData, [tag] )
-        s = wish.shape
-
-        pulpMaxVars =  pulp.LpVariable.matrix( 'ppBin', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
-        K = np.fabs(self.persoData[['weight' + tag[0].upper() + tag[1:]]]).values.sum()
-        pulpBinVars =  pulp.LpVariable.matrix( tag+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
-        
-        self.model += pulp.lpSum(pulpMaxVars)
-        
-        SetPPConstraint( self.model, wish, dispo, pulpMaxVars, pulpBinVars, K ) 
-        
-        self.model.solve()        
-        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
-        self.assertEqual(pulp.value(self.model.objective), 1 )
-
-    def test_PPConstraintUpBound(self) :
-        tag='phone'
-        self.persoData['weightPhone']=[1, 0, 0]
-        
-        (wish, dispo) = GetPPBinMatching(self.pulpVars, self.officeData, self.persoData, [tag] )
-        s = wish.shape
-
-        pulpMaxVars =  pulp.LpVariable.matrix( 'ppBin', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
-        K = np.fabs(self.persoData[['weight' + tag[0].upper() + tag[1:]]]).values.sum()
-        pulpBinVars =  pulp.LpVariable.matrix( tag+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
-        
-        self.model += pulp.lpSum(pulpMaxVars)
-        
-        SetPPConstraint( self.model, wish, dispo, pulpMaxVars, pulpBinVars, K , bound=1, value=0) 
-        
-        self.model.solve()        
-        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
-        self.assertEqual(pulp.value(self.model.objective), 1 )
-
-        x = ArrayFromPulpMatrix2D(self.pulpVars)
-        self.assertEqual(x[0][0], 1)
-
-
-    def test_PPConstraintLowBound(self) :
-        tag='phone'
-        self.persoData.loc[2,'weightPhone']=0 
-        (wish, dispo) = GetPPBinMatching(self.pulpVars, self.officeData, self.persoData, [tag] )
-        s = wish.shape
-
-        pulpMaxVars =  pulp.LpVariable.matrix( 'ppBin', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
-        K = np.fabs(self.persoData[['weight' + tag[0].upper() + tag[1:]]]).values.sum()
-        pulpBinVars =  pulp.LpVariable.matrix( tag+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
-                
-        SetPPConstraint( self.model, wish, dispo, pulpMaxVars, pulpBinVars, K, bound=-1, value = 1 ) 
-        
-        self.model.solve()        
-        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
-        self.assertEqual(pulp.value(self.model.objective), None )
-        
-        x = ArrayFromPulpMatrix2D(self.pulpVars)
-        self.assertTrue(np.allclose( np.diag([1,1,1]), x, rtol=1e-05, atol=1e-08))
-        
-        
-        #Test not yet prepared
-        self.assertTrue(False)
-
-
-    def test_PPConstraintBoundInf(self) :
-        tag='phone'
-        
-        (wish, dispo) = GetPPBinMatching(self.pulpVars, self.officeData, self.persoData, [tag] )
-        s = wish.shape
-
-        pulpMaxVars =  pulp.LpVariable.matrix( 'ppBin', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
-        K = np.fabs(self.persoData[['weight' + tag[0].upper() + tag[1:]]]).values.sum()
-        pulpBinVars =  pulp.LpVariable.matrix( tag+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
-        
-        self.model += pulp.lpSum(pulpMaxVars)
-        
-        SetPPConstraint( self.model, wish, dispo, pulpMaxVars, pulpBinVars, K, -1, -100 ) 
-        
-        self.model.solve()        
-        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
-
-        
-    #===========    
-    def test_PRBinLow(self ) :
-    
-        tags=['window', 'clim']
-        bound = 1
-        
-        SetPRBinConstraint( self.model, self.pulpVars, self.officeData, self.persoData, tags, bound, up=False )
-        self.model.solve()        
-        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
-        x = ArrayFromPulpMatrix2D(self.pulpVars)
-        self.assertTrue(np.allclose( np.diag([1,1,1]), x, rtol=1e-05, atol=1e-08))
-    
-    def test_PRBinLowInf(self) : 
-        self.persoData.loc[1,'clim']=1
-        tags=['window', 'clim']
-        bound = 1
-        
-        SetPRBinConstraint( self.model, self.pulpVars, self.officeData, self.persoData, tags, bound, up=False )
-        self.model.solve()        
-        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
-
-    def test_PRBinUp(self ) :
-    
-        tags=['window', 'clim']
-        bound = 0       
-        SetPRBinConstraint( self.model, self.pulpVars, self.officeData, self.persoData, tags, bound, up=True )       
-        self.model.solve()        
-        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
-        x = ArrayFromPulpMatrix2D(self.pulpVars)     
-        self.assertEqual( 0, x[0,0])
-        self.assertEqual( 0, x[2,2])
- 
-    def test_PRBinUpInf(self ) :
-
-        self.persoData.loc[:,'clim']=1
-        tags=['window', 'clim']
-        bound = 0
-        SetPRBinConstraint( self.model, self.pulpVars, self.officeData, self.persoData, tags, bound, up=True )       
-        self.model.solve()        
-        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
  
 #===========
 def ArrayFromPulpMatrix2D( x ) : 
@@ -572,7 +397,7 @@ def RoomOptimisation( officeData, persoData,
                      roomTag=[],
                      prBinTag=[],
                      prCatTag=[],
-                     consSpatBinTag=[],
+                     prConstBinTag=[],
                      ppCatTag=[],
                      ppBinTag=[],
                      minimize=True,
@@ -680,7 +505,10 @@ def RoomOptimisation( officeData, persoData,
     
     SetPPConstraint( model, ppBinWish, ppBinDispo, ppBinPulpVars, ppBinPulpBinVars, ppBinK )
 
-           
+
+    for (label, value, isUpper ) in prConstBinTag : 
+        SetPRBinConstraint( model, officeOccupancy, officeData, persoData, label, value, up=isUpper )
+        
 #    # legs counts the number of tall people per leftoffice
 #    roomTags.append( 'isLeft'  )
 #    servTags = [ x for x in ['isTall'] if x in persoProp]
@@ -903,13 +731,202 @@ class TestGetPPBinMatching(unittest.TestCase):
         self.assertTrue(np.allclose( [[1, 1],[1, 1]], dispo, rtol=1e-05, atol=1e-08))
 
 #========== 
+#==========
+class TestSetConstraint(unittest.TestCase):
+    def setUp( self ) : 
+        self.persoData = pd.DataFrame({'inPhone':[0, 1, 1], 
+                                       'weightPhone':[-2, 0, 1],
+                                       'window' : [1, 0, 0],
+                                       'clim' : [0, 0, 1],
+                                       'etage' : [1, 0, 2],
+                                       'weightEtage': [1, 1, 0]
+                                        })
+        self.officeData = pd.DataFrame({'roomID':[1,0,0],
+                                        'window':[1, 0, 0],
+                                        'clim':[0, 0, 1],
+                                        'etage':[1, 0, 0],
+                                        })    
+        
+        self.pulpVars = pulp.LpVariable.matrix("officeOccupancy" ,(np.arange(3), np.arange(3)),cat='Binary')
+        self.model = pulp.LpProblem("Office setting maximizing happyness", pulp.LpMaximize)
+
+        #SetConstraints
+        for s  in np.sum(self.pulpVars, axis=0) : self.model += s <= 1
+        for s in np.sum(self.pulpVars, axis=1) : self.model += s == 1    
+    
+    def test_PRCatConstraintUp(self):
+        properties = ['etage']
+        bound = 0
+        weights = GetPRCatMatching( self.pulpVars, self.officeData, self.persoData, properties)
+        SetPRConstraint( self.model, weights, bound, up=True)
+        self.model.solve()        
+        x = ArrayFromPulpMatrix2D(self.pulpVars)
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        self.assertEqual(x[1][0], 1)
+
+    def test_PRCatConstraintUpInf(self):
+        properties = ['etage']
+        bound = 0
+        self.persoData.loc[0,'etage'] = 0
+        weights = GetPRCatMatching( self.pulpVars, self.officeData, self.persoData, properties)
+        SetPRConstraint( self.model, weights, bound, up=True)
+        self.model.solve()        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
+        
+    def test_PRCatConstraintLow(self):
+        properties = ['etage']
+        bound=1
+        weights = GetPRCatMatching( self.pulpVars, self.officeData, self.persoData, properties)
+        SetPRConstraint(self.model, weights, bound, up=False)
+        self.model.solve()
+        x = ArrayFromPulpMatrix2D(self.pulpVars)
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        self.assertEqual(x[0][0], 1)
+
+    def test_PPConstraint(self) :
+        tag='phone'
+        
+        (wish, dispo) = GetPPBinMatching(self.pulpVars, self.officeData, self.persoData, [tag] )
+        s = wish.shape
+
+        pulpMaxVars =  pulp.LpVariable.matrix( 'ppBin', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
+        K = np.fabs(self.persoData[['weight' + tag[0].upper() + tag[1:]]]).values.sum()
+        pulpBinVars =  pulp.LpVariable.matrix( tag+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
+        
+        self.model += pulp.lpSum(pulpMaxVars)
+        
+        SetPPConstraint( self.model, wish, dispo, pulpMaxVars, pulpBinVars, K ) 
+        
+        self.model.solve()        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        self.assertEqual(pulp.value(self.model.objective), 1 )
+
+#    def test_PPConstraintUpBound(self) :
+#        tag='phone'
+#        self.persoData['weightPhone']=[1, 0, 0]
+#        
+#        print('\npersoData : ', self.persoData[['inPhone', 'weightPhone']])
+#        print('\nofficeData : ', self.officeData[['etage', 'roomID']] )
+#        (wish, dispo) = GetPPBinMatching(self.pulpVars, self.officeData, self.persoData, [tag] )
+#        s = wish.shape
+#
+#        pulpMaxVars =  pulp.LpVariable.matrix( 'ppBin', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
+#        K = np.fabs(self.persoData[['weight' + tag[0].upper() + tag[1:]]]).values.sum()
+#        pulpBinVars =  pulp.LpVariable.matrix( tag+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
+#        
+#        self.model += pulp.lpSum(pulpMaxVars)
+#        
+#        SetPPConstraint( self.model, wish, dispo, pulpMaxVars, pulpBinVars, K , bound=1, value=0) 
+#        
+#        self.model.solve()        
+#        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+#        self.assertEqual(pulp.value(self.model.objective), 1 )
+#
+#        x = ArrayFromPulpMatrix2D(self.pulpVars)
+#        self.assertEqual(x[0][0], 1)
+#
+#
+#    def test_PPConstraintLowBound(self) :
+#        tag='phone'
+#        self.persoData.loc[2,'weightPhone']=0 
+#        (wish, dispo) = GetPPBinMatching(self.pulpVars, self.officeData, self.persoData, [tag] )
+#        s = wish.shape
+#
+#        pulpMaxVars =  pulp.LpVariable.matrix( 'ppBin', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
+#        K = np.fabs(self.persoData[['weight' + tag[0].upper() + tag[1:]]]).values.sum()
+#        pulpBinVars =  pulp.LpVariable.matrix( tag+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
+#                
+#        SetPPConstraint( self.model, wish, dispo, pulpMaxVars, pulpBinVars, K, bound=-1, value = 1 ) 
+#        
+#        self.model.solve()        
+#        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+#        self.assertEqual(pulp.value(self.model.objective), None )
+#        
+#        x = ArrayFromPulpMatrix2D(self.pulpVars)
+#        self.assertTrue(np.allclose( np.diag([1,1,1]), x, rtol=1e-05, atol=1e-08))
+#        
+#        
+#        #Test not yet prepared
+#        self.assertTrue(False)
+#
+#
+#    def test_PPConstraintBoundInf(self) :
+#        tag='phone'
+#        
+#        (wish, dispo) = GetPPBinMatching(self.pulpVars, self.officeData, self.persoData, [tag] )
+#        s = wish.shape
+#
+#        pulpMaxVars =  pulp.LpVariable.matrix( 'ppBin', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
+#        K = np.fabs(self.persoData[['weight' + tag[0].upper() + tag[1:]]]).values.sum()
+#        pulpBinVars =  pulp.LpVariable.matrix( tag+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
+#        
+#        self.model += pulp.lpSum(pulpMaxVars)
+#        
+#        SetPPConstraint( self.model, wish, dispo, pulpMaxVars, pulpBinVars, K, -1, -100 ) 
+#        
+#        self.model.solve()        
+#        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
+
+        
+    #===========    
+    def test_PRBinLow(self ) :
+    
+        tags=['window', 'clim']
+        bound = 1
+        
+        SetPRBinConstraint( self.model, self.pulpVars, self.officeData, self.persoData, tags, bound, up=False )
+        self.model.solve()        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        x = ArrayFromPulpMatrix2D(self.pulpVars)
+        self.assertTrue(np.allclose( np.diag([1,1,1]), x, rtol=1e-05, atol=1e-08))
+    
+    def test_PRBinLowInf(self) : 
+        self.persoData.loc[1,'clim']=1
+        tags=['window', 'clim']
+        bound = 1
+        
+        SetPRBinConstraint( self.model, self.pulpVars, self.officeData, self.persoData, tags, bound, up=False )
+        self.model.solve()        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
+
+    def test_PRBinUp(self ) :
+    
+        tags=['window', 'clim']
+        bound = 0       
+        SetPRBinConstraint( self.model, self.pulpVars, self.officeData, self.persoData, tags, bound, up=True )       
+        self.model.solve()        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        x = ArrayFromPulpMatrix2D(self.pulpVars)     
+        self.assertEqual( 0, x[0,0])
+        self.assertEqual( 0, x[2,2])
+ 
+    def test_PRBinUpInf(self ) :
+
+        self.persoData.loc[:,'clim']=1
+        tags=['window', 'clim']
+        bound = 0
+        SetPRBinConstraint( self.model, self.pulpVars, self.officeData, self.persoData, tags, bound, up=True )       
+        self.model.solve()        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
 
 #==========
 class TestRoomOptimisation( unittest.TestCase ):
+    def setUp(self) :
+        self.persoData = pd.DataFrame({'inService':['SI','SI','RH'],
+                                       'window':[1,0,0],
+                                       'mur':[0, 0.5, 0],
+                                       'etage':[1, 1, 1],
+                                       'service':['RH', 'SI', ''], 
+                                       'weightService':[3,6,2]
+                                       })
+        self.officeData =pd.DataFrame({'roomID':[0,0,0],
+                                       'window':[1, 0, 0],
+                                       'mur':[0, 1, 0],
+                                       'etage':[1, 2, 1],
+                                       })
+        
     def test_empty(self) : 
-        persoData = pd.DataFrame({'inService':['SI','SI','RH']})
-        officeData =pd.DataFrame({'roomID':[0,0,0]})
-        model, placement = RoomOptimisation( officeData, persoData) 
+        model, placement = RoomOptimisation( self.officeData, self.persoData) 
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), None )
@@ -920,9 +937,8 @@ class TestRoomOptimisation( unittest.TestCase ):
 
         
     def test_resultObjectiveDiversity(self) :
-        persoData = pd.DataFrame({'inService':['SI','SI','RH']})
-        officeData =pd.DataFrame({'roomID':[0,0,0]})
-        model, placement = RoomOptimisation( officeData, persoData, roomTag=['roomID'], diversityTag=['inService'] )
+
+        model, placement = RoomOptimisation( self.officeData, self.persoData, roomTag=['roomID'], diversityTag=['inService'] )
     
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 2 )
@@ -933,9 +949,8 @@ class TestRoomOptimisation( unittest.TestCase ):
         
         
     def test_resultDiversity(self) :
-        persoData = pd.DataFrame({'inService':['SI','SI','RH']})
-        officeData =pd.DataFrame({'roomID':[0,1,1]})
-        model, placement = RoomOptimisation( officeData, persoData, roomTag=['roomID'], diversityTag=['inService'] )
+        self.officeData['roomID']=[0,1,1]
+        model, placement = RoomOptimisation( self.officeData, self.persoData, roomTag=['roomID'], diversityTag=['inService'] )
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 3 )
@@ -945,10 +960,8 @@ class TestRoomOptimisation( unittest.TestCase ):
         self.assertEqual(np.linalg.det(np.array([y[:2,0], room2])), 1 )
         
     def test_resultBinSpat(self) : 
-        persoData = pd.DataFrame({'window':[1,0,0], 'mur':[0, 0.5, 0]})
-        officeData = pd.DataFrame({'window':[1, 0, 0], 'mur':[0, 1, 0]})
         spatialTag = ['mur', 'window' ]
-        model, placement = RoomOptimisation( officeData, persoData, prBinTag=spatialTag )
+        model, placement = RoomOptimisation( self.officeData, self.persoData, prBinTag=spatialTag )
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 1.5 )
@@ -957,15 +970,13 @@ class TestRoomOptimisation( unittest.TestCase ):
         self.assertTrue(np.allclose(y, np.diag([1,1,1]), rtol=1e-05, atol=1e-08))
 
     def test_resultCatSpat(self) : 
-        persoData = pd.DataFrame({'etage':[1, 1, 1]})
-        officeData = pd.DataFrame({'etage':[1, 2, 1]})
         spatialTag = ['etage']
         
         with self.assertRaises(RuntimeError) :
-            model, placement = RoomOptimisation( officeData, persoData, prCatTag=spatialTag )
+            model, placement = RoomOptimisation( self.officeData, self.persoData, prCatTag=spatialTag )
         
-        persoData['weightEtage'] = [1, 0, 0.5]
-        model, placement = RoomOptimisation( officeData, persoData, prCatTag=spatialTag )
+        self.persoData['weightEtage'] = [1, 0, 0.5]
+        model, placement = RoomOptimisation( self.officeData, self.persoData, prCatTag=spatialTag )
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 1.5 )
@@ -984,19 +995,16 @@ class TestRoomOptimisation( unittest.TestCase ):
         self.assertTrue(np.allclose(y, np.diag([1,1]), rtol=1e-05, atol=1e-08))
     
     def test_resultPPCatMatching(self) :
-        persoData = pd.DataFrame({'inService':['RH','SI','RH'], 'service':['SI','', 'RH'], 'weightService':[3,2,6]})
-        officeData = pd.DataFrame({'roomID':[0,0,0]})
         spatialTag = ['service' ]
-        model, placement = RoomOptimisation( officeData, persoData, ppCatTag=spatialTag )
+        model, placement = RoomOptimisation( self.officeData, self.persoData, ppCatTag=spatialTag, roomTag=['roomID'] )
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 9 )
 
     def test_resultPPCatMatching0Weight(self) :
-        persoData = pd.DataFrame({'inService':['RH','SI','RH'], 'service':['SI','SI', 'RH'], 'weightService':[3,0,6]})
-        officeData = pd.DataFrame({'roomID':[0,0,0]})
+        self.persoData.loc[2,'weightService'] = 0
         spatialTag = ['service' ]
-        model, placement = RoomOptimisation( officeData, persoData, ppCatTag=spatialTag )
+        model, placement = RoomOptimisation( self.officeData, self.persoData, ppCatTag=spatialTag, roomTag=['roomID'] )
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 9 )
