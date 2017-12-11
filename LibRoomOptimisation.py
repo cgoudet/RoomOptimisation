@@ -7,7 +7,7 @@ from PIL import Image, ImageFont, ImageDraw
 
 
 class Constraint() :
-    def __init__(self, typ, label, maxWeights = False, bound=0, valBound=0 ):
+    def __init__(self, typ, label, maxWeights = False, bound=0, valBound=0, roomTag=[] ):
         self.acceptedTypes = ['ppBin', 'ppCat', 'prBin', 'prCat']
         if typ not in self.acceptedTypes : raise RuntimeError('Constraint : Wrong type for constraint. Accepted types : ' + ' '.join(self.acceptedTypes))
         self.__type = typ
@@ -16,6 +16,7 @@ class Constraint() :
         self.maxWeights=maxWeights
         self.bound = bound
         self.valBound = valBound
+        self.roomTag = roomTag
         
         self.wish = np.array([])
         self.dispo = np.array([])
@@ -31,21 +32,21 @@ class Constraint() :
          elif self.__type == 'prBin' and self.maxWeights : return pulp.lpSum(np.multiply(self.wish, self.dispo))
          else : return 0
     
-    def DefineConstraint(self, placement, officeData, persoData, roomTag=[] ) :
-        if 'pp' in self.__type  : self.DefinePPConstraint( placement, officeData, persoData, roomTag )
-        elif self.__type == 'prBin' : self.DefinePRBinConstraint( placement, officeData, persoData, roomTag)
+    def DefineConstraint(self, placement, officeData, persoData ) :
+        if 'pp' in self.__type  : self.DefinePPConstraint( placement, officeData, persoData )
+        elif self.__type == 'prBin' : self.DefinePRBinConstraint( placement, officeData, persoData )
         else : raise RuntimeError( 'DefineConstraint : Unknown type for Constraint : ', self.__type )
         
-    def DefinePPConstraint(self, placement, officeData, persoData, roomTag=[] ) : 
-        if 'Cat' in self.__type : (self.wish, self.dispo) = GetPPCatSingleMatching( placement, officeData, persoData, self.label, roomID=roomTag )
-        else : (self.wish, self.dispo) = GetPPBinMatching( placement, officeData, persoData, [self.label], roomID=roomTag )
+    def DefinePPConstraint(self, placement, officeData, persoData ) : 
+        if 'Cat' in self.__type : (self.wish, self.dispo) = GetPPCatSingleMatching( placement, officeData, persoData, self.label, roomID=self.roomTag )
+        else : (self.wish, self.dispo) = GetPPBinMatching( placement, officeData, persoData, [self.label], roomID=self.roomTag )
         s = self.wish.shape
         self.prodVars =  pulp.LpVariable.matrix( self.label+'Max', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
         self.binVars =  pulp.LpVariable.matrix( self.label+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
         self.K = max(np.fabs(persoData['weight'+self.label[0].upper()+self.label[1:]]).sum(),self.K)
         return self
     
-    def DefinePRBinConstraint( self, placement, officeData, persoData, roomTag=[] ) :
+    def DefinePRBinConstraint( self, placement, officeData, persoData ) :
         self.wish = persoData.loc[:, self.label].values
         self.dispo = np.dot(placement, officeData.loc[:, self.label])
 
@@ -495,7 +496,7 @@ def RoomOptimisation( officeData, persoData,
 #    spatialBinWeights = np.array([])
 #    if prBinTag : spatialBinWeights = GetPRBinMatching( officeOccupancy, officeData, persoData, prBinTag )
  
-    for c in constTag  : c.DefineConstraint( officeOccupancy, officeData, persoData, roomTag)
+    for c in constTag  : c.DefineConstraint( officeOccupancy, officeData, persoData )
 
 
 #    pulp.lpSum(None)
@@ -1034,16 +1035,16 @@ class TestRoomOptimisation( unittest.TestCase ):
         self.assertTrue(np.allclose(y, np.diag([1,1]), rtol=1e-05, atol=1e-08))
     
     def test_resultPPCatMatching(self) :
-        spatialTag = [Constraint('ppCat', 'service', maxWeights=True ) ]
-        model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=spatialTag, roomTag=['roomID'] )
+        spatialTag = [Constraint('ppCat', 'service', maxWeights=True, roomTag=['roomID'] ) ]
+        model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=spatialTag )
 
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 9 )
        
     def test_resultPPCatMatching0Weight(self) :
         self.persoData.loc[2,'weightService'] = 0
-        constTag = [Constraint('ppCat', 'service', maxWeights=True ) ]
-        model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag, roomTag=['roomID'] )
+        constTag = [Constraint('ppCat', 'service', maxWeights=True , roomTag=['roomID'] ) ]
+        model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag)
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 9 )
@@ -1051,8 +1052,8 @@ class TestRoomOptimisation( unittest.TestCase ):
     def test_resultPPCatMatchingNegWeight(self) :
         self.persoData['weightService']=[-3, 0, -6]
         self.persoData['service'] = ['SI', 'RH', 'SI']
-        constTag = [Constraint('ppCat', 'service', maxWeights=True ) ]
-        model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag, roomTag=['roomID'] )
+        constTag = [Constraint('ppCat', 'service', maxWeights=True , roomTag=['roomID']) ]
+        model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag )
 
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), -9 )
