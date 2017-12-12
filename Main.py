@@ -98,7 +98,7 @@ def main():
     persoFileName = 'PersoPref.csv'
     persoFileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoPref.csv'
     persoData = ImportPerso( persoFileName )
-    
+    print(persoData)
     factors = {'rawWindow':1, 'rawClim':-1, 'rawPassage':1 }
     for k, v in factors.items() : TransformScale( persoData, k, k.replace('raw', '').lower(), v==1)
     
@@ -115,8 +115,12 @@ def main():
     persoPropName = 'PersoProp.csv'
     persoPropName = 'C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoProp.csv'
     persoProp = pd.read_csv( persoPropName ).fillna(0)
+    print('persoProp ', persoProp)
     persoData = pd.merge( persoData, persoProp, on='Nom')
-    persoData = persoData[persoData['isCodir']==0]
+    print('postMerge : ', persoData)
+    persoData = persoData[persoData['isCodir']<0.5]
+    print('postCodir : ', persoData)
+
     persoData = persoData[persoData['isGRC']==0]
     
     officeData = officeData[officeData['isCodir']==0]
@@ -133,7 +137,7 @@ def main():
                 Constraint('prBinCat', 'isFace', bound=1, valBound=1 ),
                 Constraint('prBin', 'isAgathe', bound=-1, valBound=1),
                 Constraint('prBin', 'mur', bound=-1, valBound=1),
-                Constraint('prBinCat', 'phone', True, roomTag=['roomID'])
+                Constraint('prBinCat', 'phone', True, roomTag=['roomID']),
 #                Constraint('ppCat', 'perso1', True, roomTag=['roomID'] ),
 #                Constraint('ppCat', 'perso2', True, roomTag=['roomID'] ),
 #                Constraint('ppCat', 'perso3', True, roomTag=['roomID'] ),

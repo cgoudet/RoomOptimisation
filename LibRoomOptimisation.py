@@ -371,7 +371,7 @@ def GetPPCatSingleMatching( placement, officeData, persoData, option, roomID=[] 
         officeFilter = np.dot( placement, officeFilter.values )
         persoDispo = np.dot( persoInOption.T, officeFilter)
         persoWish = np.dot( persoFilter.values.T, officeFilter)     
-
+        print(persoWish, persoDispo)
         return (persoWish, persoDispo)
 
 
