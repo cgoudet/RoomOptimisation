@@ -31,11 +31,10 @@ class Constraint() :
         if not self.maxWeights : return 0
         elif 'pp' in self.__type : return pulp.lpSum(self.prodVars )
         elif  self.__type == 'prBinCat' : return  np.dot(self.wish.T, self.dispo ).sum()
-        elif 'pr' in self.__type : return pulp.lpSum(np.multiply(self.wish, self.dispo))
+        elif 'pr' in self.__type : return np.multiply(self.wish, self.dispo).sum()
         else : return 0
     
     def DefineConstraint(self, placement, officeData, persoData ) :
-        print( self.label, self.__type)
         if 'pp' in self.__type  : self.DefinePPConstraint( placement, officeData, persoData )
         elif self.__type == 'prBin' : self.DefinePRBinConstraint( placement, officeData, persoData )
         elif self.__type == 'prCat' : self.DefinePRCatConstraint( placement, officeData, persoData )
@@ -59,7 +58,7 @@ class Constraint() :
     def DefinePRBinConstraint( self, placement, officeData, persoData ) :
         self.wish = persoData.loc[:, self.label].values
         self.dispo = np.dot(placement, officeData.loc[:, self.label])
-
+        
     def DefinePRCatConstraint( self, placement, officeData, persoData ) :
         weightName = 'weight' + self.label[0].upper() + self.label[1:]
     
@@ -88,12 +87,14 @@ class Constraint() :
     def SetPRBinCatConstraint( self, model ) :
         tot = np.dot( self.wish.T, self.dispo )
         for val in tot :
+            if not val : continue
             if self.bound>0 : model += val <= self.valBound
             elif self.bound<0 : model += val >= self.valBound
 
     def SetPRBinConstraint(self, model ) : 
         tot = np.multiply(self.wish, self.dispo)
         for val in tot :
+            if not val : continue 
             if self.bound>0 : model += val <= self.valBound
             elif self.bound<0 : model += val >= self.valBound
  
@@ -101,6 +102,7 @@ class Constraint() :
         tot = np.multiply(self.wish, self.dispo)
         for line in tot :
             for val in line :
+                if not val : continue 
                 if self.bound>0 : model += val <= self.valBound
                 elif self.bound<0 : model += val >= self.valBound
                 
@@ -127,7 +129,7 @@ class Constraint() :
         return np.multiply( self.wish, self.dispo )
         
     def GetPRHappyness( self, placement, officeData, persoData ) : 
-        if self.label == 'prBin' : self.DefinPRBinConstraint(placement, officeData, persoData )
+        if self.__type == 'prBin' : self.DefinePRBinConstraint(placement, officeData, persoData )
         else : self.DefinePRCatConstraint(placement, officeData, persoData )
         return np.multiply( self.wish, self.dispo )
     
@@ -995,8 +997,12 @@ class TestConstraint( unittest.TestCase ):
         #SetConstraints
         for s  in np.sum(self.pulpVars, axis=0) : self.model += s <= 1
         for s in np.sum(self.pulpVars, axis=1) : self.model += s == 1    
-
-    def test_DefinePRBinCatConstraint_resultMax(self) :
+    
+    # =============================================================================
+    # PRBINCAT
+    # =============================================================================
+    
+    def test_DefinePRBinCatConstraint_resultInput(self) :
         cons = Constraint( 'prBinCat', 'table', True, roomTag=['table'] )
         cons.DefinePRBinCatConstraint( self.placement, self.officeData, self.persoData )
         
@@ -1039,8 +1045,55 @@ class TestConstraint( unittest.TestCase ):
         
         self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
 
+    # =============================================================================
+    # PRBIN
+    # =============================================================================
        
- #   def test_DefinePRBinConstraint_resultMax(self) :
+    def test_DefinePRBinConstraint_resultInput(self) :
+        self.officeData.loc[1,'table']=1
+        cons = Constraint( 'prBin', 'table', True )
+        cons.DefinePRBinConstraint( self.placement, self.officeData, self.persoData )
+        
+        self.assertTrue(np.allclose([1,1, 0], cons.wish , rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose([0, 1, 1], cons.dispo , rtol=1e-05, atol=1e-08))
+         
+        self.assertAlmostEqual(1, cons.GetObjVal() )
+        
+        hap = cons.GetPRHappyness(np.diag([1, 1, 1]), self.officeData, self.persoData )
+        self.assertTrue(np.allclose([0,1, 0], hap , rtol=1e-05, atol=1e-08))
+
+
+    def test_DefinePRBinConstraint_resultConsUp(self) :
+        cons = Constraint( 'prBin', 'table', False, bound=1, valBound=0 )
+        cons.DefinePRBinConstraint( self.pulpVars, self.officeData, self.persoData )
+        cons.SetConstraint(self.model)
+        self.model.solve()
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        
+        self.assertAlmostEqual(0, cons.GetObjVal() )
+        x = ArrayFromPulpMatrix2D( self.pulpVars )
+        self.assertAlmostEqual(x[2][2], 1 )
+        
+    def test_DefinePRBinConstraint_resultConsDownMax(self) :
+        self.officeData.loc[1,'table']=1
+        cons = Constraint( 'prBin', 'table', True, bound=-1, valBound=1 )
+        cons.DefinePRBinConstraint( self.pulpVars, self.officeData, self.persoData )
+        cons.SetConstraint(self.model)
+        self.model.solve()
+        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        self.assertAlmostEqual(2, cons.GetObjVal() )
+        x = ArrayFromPulpMatrix2D( self.pulpVars )
+        self.assertAlmostEqual(x[2][0], 1 )
+ 
+    def test_DefinePRBinConstraint_resultInfeas(self) :
+
+        cons = Constraint( 'prBin', 'table', True, bound=-1, valBound=1 )
+        cons.DefinePRBinConstraint( self.pulpVars, self.officeData, self.persoData )
+        cons.SetConstraint(self.model)
+        self.model.solve()
+        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
         
         
 #==========
