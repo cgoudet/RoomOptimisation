@@ -91,6 +91,7 @@ def main():
     officeFileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\OfficeProperties.csv'
     #Read the input data for offices
     officeData = ImportOffices( officeFileName )
+    officeData['phone']=officeData['roomID']
     print(officeData.head())
 
     
@@ -120,6 +121,7 @@ def main():
     
     officeData = officeData[officeData['isCodir']==0]
     officeData = officeData[officeData['isGRC']==0]
+    officeData = officeData[officeData['isOut']==0]
     print(persoData)   
 
     constTag = [Constraint('prBin', 'window', True ),
@@ -130,7 +132,8 @@ def main():
                 Constraint('prBinCat', 'seul', True, roomTag=['seul'] ),
                 Constraint('prBinCat', 'isFace', bound=1, valBound=1 ),
                 Constraint('prBin', 'isAgathe', bound=-1, valBound=1),
-                Constraint('prBin', 'mur', bound=-1, valBound=1)
+                Constraint('prBin', 'mur', bound=-1, valBound=1),
+                Constraint('prBinCat', 'phone', True, roomTag=['roomID'])
 #                Constraint('ppCat', 'perso1', True, roomTag=['roomID'] ),
 #                Constraint('ppCat', 'perso2', True, roomTag=['roomID'] ),
 #                Constraint('ppCat', 'perso3', True, roomTag=['roomID'] ),

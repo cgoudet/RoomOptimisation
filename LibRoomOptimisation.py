@@ -443,7 +443,7 @@ def RoomOptimisation( officeData, persoData,
 
     #Objective function : 
     model += (
-            np.sum(delta)*2
+            np.sum(delta)
             + pulp.lpSum( c.GetObjVal() for c in constTag )
             )
     
