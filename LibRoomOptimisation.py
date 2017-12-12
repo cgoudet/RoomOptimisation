@@ -1020,8 +1020,7 @@ class TestConstraint( unittest.TestCase ):
         x = ArrayFromPulpMatrix2D( self.pulpVars )
         self.assertAlmostEqual(x[2][2], 0 )
 
-    def test_DefinePRBinCatConstraint_resultConsDown(self) :
-        print('resultDown')
+    def test_DefinePRBinCatConstraint_resultConsDownMax(self) :
         cons = Constraint( 'prBinCat', 'table', True, roomTag=['table'], bound=-1, valBound=1 )
         cons.DefinePRBinCatConstraint( self.pulpVars, self.officeData, self.persoData )
         cons.SetConstraint(self.model)
@@ -1031,7 +1030,16 @@ class TestConstraint( unittest.TestCase ):
         self.assertAlmostEqual(2, cons.GetObjVal() )
         x = ArrayFromPulpMatrix2D( self.pulpVars )
         self.assertAlmostEqual(x[2][2], 0 )
+ 
+    def test_DefinePRBinCatConstraint_resultInfeas(self) :
+        cons = Constraint( 'prBinCat', 'table', True, roomTag=['table'], bound=-1, valBound=3 )
+        cons.DefinePRBinCatConstraint( self.pulpVars, self.officeData, self.persoData )
+        cons.SetConstraint(self.model)
+        self.model.solve()
         
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
+
+       
  #   def test_DefinePRBinConstraint_resultMax(self) :
         
         
