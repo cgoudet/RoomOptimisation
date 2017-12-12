@@ -35,6 +35,7 @@ class Constraint() :
         else : return 0
     
     def DefineConstraint(self, placement, officeData, persoData ) :
+        print( self.label, self.__type)
         if 'pp' in self.__type  : self.DefinePPConstraint( placement, officeData, persoData )
         elif self.__type == 'prBin' : self.DefinePRBinConstraint( placement, officeData, persoData )
         elif self.__type == 'prCat' : self.DefinePRCatConstraint( placement, officeData, persoData )
@@ -127,7 +128,7 @@ class Constraint() :
         
     def GetPRHappyness( self, placement, officeData, persoData ) : 
         if self.label == 'prBin' : self.DefinPRBinConstraint(placement, officeData, persoData )
-        else : self.DefinPRCatConstraint(placement, officeData, persoData )
+        else : self.DefinePRCatConstraint(placement, officeData, persoData )
         return np.multiply( self.wish, self.dispo )
     
     def GetPPBinHappyness( self, placement, officeData, persoData ) :
@@ -999,6 +1000,7 @@ class TestConstraint( unittest.TestCase ):
         cons = Constraint( 'prBinCat', 'table', True, roomTag=['table'] )
         cons.DefinePRBinCatConstraint( self.placement, self.officeData, self.persoData )
         
+        self.assertTrue(np.allclose([1,1, 0], cons.wish , rtol=1e-05, atol=1e-08))
         self.assertTrue(np.allclose([[1, 0], [1, 0], [0, 1]], cons.dispo , rtol=1e-05, atol=1e-08))
          
         self.assertAlmostEqual(2.0, cons.GetObjVal() )

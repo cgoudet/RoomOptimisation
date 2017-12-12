@@ -82,12 +82,14 @@ def TransformEtage( data, name ) :
 def main():
     
     officeFileName = 'OfficeProperties.csv'
+    officeFileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\OfficeProperties.csv'
     #Read the input data for offices
     officeData = ImportOffices( officeFileName )
     print(officeData.head())
     #PrintOfficeNumber(officeData)
     
     persoFileName = 'PersoPref.csv'
+    persoFileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoPref.csv'
     persoData = ImportPerso( persoFileName )
     
     factors = {'rawWindow':1, 'rawClim':-1, 'rawPassage':1 }
@@ -100,8 +102,8 @@ def main():
         persoData['inPerso'+str(i)] = persoData['Nom']
         persoData['perso'+str(i)] = persoData['rawPerso'+str(i)]
      
-    persoPropName = 'C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoProp.csv'
     persoPropName = 'PersoProp.csv'
+    persoPropName = 'C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoProp.csv'
     persoProp = pd.read_csv( persoPropName )
     print(persoProp.head())
     persoData = pd.merge( persoData, persoProp, on='Nom')
