@@ -17,7 +17,7 @@ class Constraint() :
         self.bound = bound
         self.valBound = valBound
         self.roomTag = roomTag
-        if not self.roomTag and self.__type in ['prBinCat', 'ppBinTag', 'ppCatTag' ] : raise RuntimeError( 'Constraint : Need roomTag for option ', self.label ) 
+        if not self.roomTag and self.__type in [ 'ppBinTag', 'ppCatTag' ] : raise RuntimeError( 'Constraint : Need roomTag for option ', self.label ) 
         self.wish = np.array([])
         self.dispo = np.array([])
         self.K = 2
@@ -110,7 +110,7 @@ class Constraint() :
     def GetHappyness( self, placement, officeData, persoData ) :
         if not self.maxWeights  : return 0
         x = ArrayFromPulpMatrix2D( placement )
-        if self.label == 'prBinCat' : return self.GetPRBinCatHappyness( x, officeData, persoData )
+        if self.__type == 'prBinCat' : return self.GetPRBinCatHappyness( x, officeData, persoData )
         elif 'pr' in self.__type : return self.GetPRHappyness( x, officeData, persoData )
         elif 'pp' in self.__type : return self.GetPPHappyness( x, officeData, persoData)
         
@@ -413,12 +413,14 @@ def PrintOptimResults( placement
         print('diversityTags : ' + ' '.join(diversityTag)+'\n', Delta)
         print('diversityObjective : ', Delta.sum())
         
+    labels = []
     for c in constTag : 
-        #resultFrame[c.label] = 
-        print(c.label, c.GetHappyness( x, officeData, persoData ).shape)
+        resultFrame[c.label] =  c.GetHappyness( x, officeData, persoData )
+        labels.append(c.label)
     
-    resultFrame['totHappyness'] = resultFrame[1:].sum(axis=1)
+    resultFrame['totHappyness'] = resultFrame.loc[:,labels].sum(axis=1)
     
+    print(resultFrame)
     print('Attributions Bureaux')
     for row in resultFrame.itertuples() :
         print( '%s is given office %i with happyness %2.2f' % (row.Nom,row.office, row.totHappyness))

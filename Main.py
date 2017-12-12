@@ -36,6 +36,7 @@ def ImportOffices( fileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Pr
                   'etage':np.int8,
                   'roomID':int,
                   'isFace':int,
+                  'seul':int
                   }
     data = pd.read_csv( fileName
                        , index_col='ID'
@@ -54,9 +55,10 @@ def ImportPerso( fileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Proj
                    'rawWindow':0,
                    'rawClim':0,
                    'rawPassage':0,
+                   'rawSeul':0,
                    }
     
-    selectColumns = ['rawPerso1', 'rawPerso2', 'rawPerso3', 'rawEtage', 'rawWindow', 'rawClim', 'rawPassage', 'Nom']
+    selectColumns = ['rawPerso1', 'rawPerso2', 'rawPerso3', 'rawEtage', 'rawWindow', 'rawClim', 'rawPassage', 'Nom', 'rawSeul']
                       
     data = pd.read_csv( fileName, 
                        header=1,
@@ -77,7 +79,11 @@ def EtageMatching( x ) :
 #==========
 def TransformEtage( data, name ) :
     data['etage'], data['weightEtage'] = zip(*data[name].map(EtageMatching))
-
+#==========
+def SeulTransform( x ) :
+    if x in [0, 3 ] : return 0
+    elif x < 3 : return -9+3*x
+    else : return (x-3)*3
 #==========
 def main():
     
@@ -86,7 +92,7 @@ def main():
     #Read the input data for offices
     officeData = ImportOffices( officeFileName )
     print(officeData.head())
-    #PrintOfficeNumber(officeData)
+
     
     persoFileName = 'PersoPref.csv'
     persoFileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoPref.csv'
@@ -97,6 +103,9 @@ def main():
     
     persoData.loc[:,'Nom'] = persoData['Nom'].apply( lambda x : x.split('.')[0] +'.')
     TransformEtage( persoData, 'rawEtage' )
+    
+    persoData['seul'] = persoData['rawSeul'].map(SeulTransform).fillna(0)
+
     for i in range(1, 4) :
         persoData['weightPerso'+str(i)] = 7-2*i
         persoData['inPerso'+str(i)] = persoData['Nom']
@@ -104,50 +113,23 @@ def main():
      
     persoPropName = 'PersoProp.csv'
     persoPropName = 'C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoProp.csv'
-    persoProp = pd.read_csv( persoPropName )
-    print(persoProp.head())
+    persoProp = pd.read_csv( persoPropName ).fillna(0)
     persoData = pd.merge( persoData, persoProp, on='Nom')
+    persoData = persoData[persoData['isCodir']==0]
+    persoData = persoData[persoData['isGRC']==0]
+    
+    officeData = officeData[officeData['isCodir']==0]
+    officeData = officeData[officeData['isGRC']==0]
     print(persoData.head())   
 
-
-#    np.random.seed(12435)
-#
-#    nPerso=12
-#    nOffice=20
-#
-#    # Create randomly generated persons
-#    options =  ['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'] + ['weightPerso%i'%i for i in range(1,4)] 
-#    persoProp = { 'inService' : [ 'SI', 'RH', 'Achat', 'GRC'], 'isTall' : [0,1, 0] }
-#    persoData = CreatePersoData( nPerso=nPerso, preferences=options, properties=persoProp)
-#    print(persoData)
-#    NormalizePersoPref( persoData, [['clim', 'mur', 'passage', 'sonnerie', 'wc', 'weightEtage', 'window'], ['weightPerso%i'%i for i in range(1,4)]] )
-#    print(persoData)
-#    
-#     # spatialProps = ['wc', 'clim', 'mur', 'passage', 'sonnerie', 'window' ]
-#    # Create randomly generated rooms
-#    officeProp = {'roomID':range(4),
-#             'isLeft':range(2),
-#              'wc': [0,0,0,0,1],
-#              'clim': [0,0,0,0,1],
-#              'mur': [0,0,0,0,1],
-#              'passage': [0,0,0,0,1],
-#              'sonnerie': [0,0,0,0,1],
-#              'window': [0,0,0,0,1],
-#              'etage' : [1,2],    
-#             }
-#    officeData = CreateOfficeData(nOffice=nOffice,properties=officeProp)
-#    print(officeData)
- 
-    #Repartition without constraint
-    #model, placement = RoomOptimisation( officeData, persoData )
-    
-    #diversity
-    #model, placement = RoomOptimisation( officeData, persoData , diversityTag=['inService'], roomTag=['roomID'])
-    
+    print(persoData.columns)
     constTag = [Constraint('prBin', 'window', True ),
                 Constraint('prBin', 'clim', True ),
                 Constraint('prBin', 'passage', True ),
                 Constraint('prCat', 'etage', True ),
+                Constraint('prBin', 'secure', bound=-1, valBound=1),
+                Constraint('prBinCat', 'seul', True, roomTag=['seul'] ),
+                Constraint('prBinCat', 'isFace', bound=1, valBound=1 ),
 #                Constraint('ppCat', 'perso1', True, roomTag=['roomID'] ),
 #                Constraint('ppCat', 'perso2', True, roomTag=['roomID'] ),
 #                Constraint('ppCat', 'perso3', True, roomTag=['roomID'] ),
@@ -159,7 +141,7 @@ def main():
                                         , printResults=True
                                         )
     
-    print('elapsed : ', t -time.time())
+    print('elapsed : ', time.time()-t)
 
 
     
