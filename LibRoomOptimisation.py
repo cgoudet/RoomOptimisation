@@ -88,21 +88,21 @@ class Constraint() :
     def SetPRBinCatConstraint( self, model ) :
         tot = np.dot( self.wish.T, self.dispo )
         for val in tot :
-            if self.bound>0 : model += val <= self.bound
-            elif self.bound<0 : model += val >= self.bound
+            if self.bound>0 : model += val <= self.valBound
+            elif self.bound<0 : model += val >= self.valBound
 
     def SetPRBinConstraint(self, model ) : 
         tot = np.multiply(self.wish, self.dispo)
         for val in tot :
-            if self.bound>0 : model += val <= self.bound
-            elif self.bound<0 : model += val >= self.bound
+            if self.bound>0 : model += val <= self.valBound
+            elif self.bound<0 : model += val >= self.valBound
  
     def SetPRCatConstraint(self, model ) :
         tot = np.multiply(self.wish, self.dispo)
         for line in tot :
             for val in line :
-                if self.bound>0 : model += val <= self.bound
-                elif self.bound<0 : model += val >= self.bound
+                if self.bound>0 : model += val <= self.valBound
+                elif self.bound<0 : model += val >= self.valBound
                 
                 
     def GetHappyness( self, placement, officeData, persoData ) :
@@ -1009,15 +1009,31 @@ class TestConstraint( unittest.TestCase ):
         self.assertTrue(np.allclose([2,2, 0], hap , rtol=1e-05, atol=1e-08))
 
 
-    def test_DefinePRBinCatConstraint_resultCons(self) :
+    def test_DefinePRBinCatConstraint_resultConsUp(self) :
         cons = Constraint( 'prBinCat', 'table', False, roomTag=['table'], bound=1, valBound=1 )
         cons.DefinePRBinCatConstraint( self.pulpVars, self.officeData, self.persoData )
         cons.SetConstraint(self.model)
         self.model.solve()
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
         
         self.assertAlmostEqual(0, cons.GetObjVal() )
         x = ArrayFromPulpMatrix2D( self.pulpVars )
         self.assertAlmostEqual(x[2][2], 0 )
+
+    def test_DefinePRBinCatConstraint_resultConsDown(self) :
+        print('resultDown')
+        cons = Constraint( 'prBinCat', 'table', True, roomTag=['table'], bound=-1, valBound=1 )
+        cons.DefinePRBinCatConstraint( self.pulpVars, self.officeData, self.persoData )
+        cons.SetConstraint(self.model)
+        self.model.solve()
+        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        self.assertAlmostEqual(2, cons.GetObjVal() )
+        x = ArrayFromPulpMatrix2D( self.pulpVars )
+        self.assertAlmostEqual(x[2][2], 0 )
+        
+ #   def test_DefinePRBinConstraint_resultMax(self) :
+        
         
 #==========
 class TestRoomOptimisation( unittest.TestCase ):
