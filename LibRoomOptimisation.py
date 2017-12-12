@@ -129,9 +129,12 @@ class Constraint() :
         return np.multiply( self.wish, self.dispo )
         
     def GetPRHappyness( self, placement, officeData, persoData ) : 
-        if self.__type == 'prBin' : self.DefinePRBinConstraint(placement, officeData, persoData )
-        else : self.DefinePRCatConstraint(placement, officeData, persoData )
-        return np.multiply( self.wish, self.dispo )
+        if self.__type == 'prBin' : 
+            self.DefinePRBinConstraint(placement, officeData, persoData )
+            return np.multiply( self.wish, self.dispo )
+        else : 
+            self.DefinePRCatConstraint(placement, officeData, persoData )
+            return np.multiply( self.wish, self.dispo ).sum(1)
     
     def GetPPBinHappyness( self, placement, officeData, persoData ) :
         inName = 'in'+self.label[0].upper() + self.label[1:]
@@ -410,7 +413,9 @@ def PrintOptimResults( placement
         print('diversityTags : ' + ' '.join(diversityTag)+'\n', Delta)
         print('diversityObjective : ', Delta.sum())
         
-    for c in constTag : resultFrame[c.label] = c.GetHappyness( placement, officeData, persoData )
+    for c in constTag : 
+        #resultFrame[c.label] = 
+        print(c.label, c.GetHappyness( x, officeData, persoData ).shape)
     
     resultFrame['totHappyness'] = resultFrame[1:].sum(axis=1)
     
@@ -636,6 +641,8 @@ def RoomOptimisation( officeData, persoData,
                       , diversityTag
                       , constTag
                       )
+        
+ 
         print('\n==========\n')
         print('model status : ', pulp.LpStatus[model.status] )
         print('objective : ', pulp.value(model.objective) )
@@ -987,8 +994,8 @@ class TestSetConstraint(unittest.TestCase):
 #==========
 class TestConstraint( unittest.TestCase ):
     def setUp(self) : 
-        self.persoData = pd.DataFrame({'table':[1, 1, 0] } )
-        self.officeData = pd.DataFrame({'table':[0,0,1] } )
+        self.persoData = pd.DataFrame({'table':[1, 1, 0], 'etage':[1,0,2], 'weightEtage':[1,1,2] } )
+        self.officeData = pd.DataFrame({'table':[0,0,1], 'etage':[1, 1, 2] } )
         self.placement = np.diag([1, 1, 1])
         
         self.pulpVars = pulp.LpVariable.matrix("officeOccupancy" ,(np.arange(3), np.arange(3)),cat='Binary')
@@ -1095,6 +1102,53 @@ class TestConstraint( unittest.TestCase ):
         
         self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
         
+    # =============================================================================
+    # PRCAT
+    # =============================================================================
+       
+    def test_DefinePRCatConstraint_resultInput(self) :
+        cons = Constraint( 'prCat', 'etage', True )
+        cons.DefinePRCatConstraint( self.placement, self.officeData, self.persoData )
+
+        self.assertTrue(np.allclose([[1, 0], [0, 0], [0, 2]], cons.wish , rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose([[1, 0], [1, 0], [0, 1]], cons.dispo , rtol=1e-05, atol=1e-08))
+         
+        self.assertAlmostEqual(3, cons.GetObjVal() )
+        
+        hap = cons.GetPRHappyness(self.placement, self.officeData, self.persoData )
+        self.assertTrue(np.allclose([1,0, 2], hap , rtol=1e-05, atol=1e-08))
+
+
+    def test_DefinePRCatConstraint_resultConsUp(self) :
+        cons = Constraint( 'prCat', 'etage', False, bound=1, valBound=0 )
+        cons.DefinePRCatConstraint( self.pulpVars, self.officeData, self.persoData )
+        cons.SetConstraint(self.model)
+        self.model.solve()
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        
+        self.assertAlmostEqual(0, cons.GetObjVal() )
+        x = ArrayFromPulpMatrix2D( self.pulpVars )
+        self.assertAlmostEqual(x[0][2], 1 )
+        
+    def test_DefinePRCatConstraint_resultConsDownMax(self) :
+        cons = Constraint( 'prCat', 'etage', True, bound=-1, valBound=1 )
+        cons.DefinePRCatConstraint( self.pulpVars, self.officeData, self.persoData )
+        cons.SetConstraint(self.model)
+        self.model.solve()
+        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        self.assertAlmostEqual(3, cons.GetObjVal() )
+        x = ArrayFromPulpMatrix2D( self.pulpVars )
+        self.assertAlmostEqual(x[2][2], 1 )
+ 
+    def test_DefinePRCatConstraint_resultInfeas(self) :
+
+        cons = Constraint( 'prCat', 'etage', True, bound=-1, valBound=3 )
+        cons.DefinePRCatConstraint( self.pulpVars, self.officeData, self.persoData )
+        cons.SetConstraint(self.model)
+        self.model.solve()
+        
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
         
 #==========
 class TestRoomOptimisation( unittest.TestCase ):
