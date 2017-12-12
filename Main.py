@@ -13,7 +13,7 @@ import time
 import pandas as pd
 import numpy as np
 from LibRoomOptimisation import RoomOptimisation, PrintOptimResults, ArrayFromPulpMatrix2D
-from LibRoomOptimisation import GetPRCatMatching, Constraint
+from LibRoomOptimisation import  Constraint
 import pulp
 
 def PrintOfficeNumber(officeData):
@@ -82,8 +82,8 @@ def TransformEtage( data, name ) :
 #==========
 def SeulTransform( x ) :
     if x in [0, 3 ] : return 0
-    elif x < 3 : return -9+3*x
-    else : return (x-3)*3
+    elif x < 3 : return -3+x
+    else : return (x-3)
 #==========
 def main():
     
@@ -122,7 +122,6 @@ def main():
     officeData = officeData[officeData['isGRC']==0]
     print(persoData.head())   
 
-    print(persoData.columns)
     constTag = [Constraint('prBin', 'window', True ),
                 Constraint('prBin', 'clim', True ),
                 Constraint('prBin', 'passage', True ),

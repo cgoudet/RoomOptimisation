@@ -251,9 +251,9 @@ def GetCountPerOfficeProp( placements, officeData, persoData, officeTags=['roomI
     """
     Return the number of occurences of persons with a given property (personTag) in offices with another property (officeTag)
     """
-    persoFilter = pd.pivot_table(persoData.loc[:,persoTags], columns=persoTags, index=persoData.index, aggfunc=len).fillna(0).values.T
-    officeFilter = pd.pivot_table(officeData.loc[:,officeTags], columns=officeTags, index=officeData.index, aggfunc=len).fillna(0).values
-
+    persoFilter = pd.pivot_table(persoData.loc[:,persoTags], columns=persoTags, index=persoData.index, aggfunc=len).fillna(0)
+    persoFilter = persoFilter.values.T
+    officeFilter = pd.pivot_table(officeData.loc[:,officeTags], columns=officeTags, index=officeData.index, aggfunc=len).fillna(0)
     return np.dot( np.dot(persoFilter, placements), officeFilter )
 
 
@@ -310,8 +310,9 @@ def PrintOptimResults( placement
     
     print('diversityTag : ', diversityTag)
     if diversityTag : 
-        Delta = GetCountPerOfficeProp( x, officeData, persoData, officeTags=GetRoomIndex(officeData), persoTags=diversityTag)
-        Delta = np.min(Delta, 1)
+        Delta = GetCountPerOfficeProp( x, officeData, persoData, persoTags=diversityTag)
+        print('Delta : ', Delta.shape, x.shape, Delta)
+        Delta = np.minimum(Delta, np.ones(Delta.shape))
         print('diversityTags : ' + ' '.join(diversityTag)+'\n', Delta)
         print('diversityObjective : ', Delta.sum())
         
@@ -327,6 +328,7 @@ def PrintOptimResults( placement
     for row in resultFrame.itertuples() :
         print( '%s is given office %i with happyness %2.2f' % (row.Nom,row.office, row.totHappyness))
     
+    resultFrame.to_csv('demenagement.csv')
     #resultFrame[['xImage', 'yImage']] = officeData[['xImage', 'yImage']]
     #DrawOutput( resultFrame, officeData[['xImage', 'yImage']] )
    # print( 'total happyness spatial : ', resultFrame['happy'].sum())
@@ -425,8 +427,8 @@ def RoomOptimisation( officeData, persoData,
     if  doDiversity : 
         roomTag=GetRoomIndex(officeData)
         # Delta counts the number of person from each inService within a room
-        Delta = GetCountPerOfficeProp( officeOccupancy, officeData, persoData, officeTags=roomTag, persoTags=diversityTag)
-    
+        Delta = GetCountPerOfficeProp( officeOccupancy, officeData, persoData, persoTags=diversityTag)
+
         # delta_sr = 1 iif a person from inService s belongs to room r
         # This variable is used to represent the diversity of inServices. The objective function will contain a sum of delta across inServices and rooms.
         # This variable values will be fully constrained by Delta
@@ -443,7 +445,7 @@ def RoomOptimisation( officeData, persoData,
 
     #Objective function : 
     model += (
-            np.sum(delta)
+            np.sum(delta)*10
             + pulp.lpSum( c.GetObjVal() for c in constTag )
             )
     
