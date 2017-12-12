@@ -988,6 +988,13 @@ class TestConstraint( unittest.TestCase ):
         self.officeData = pd.DataFrame({'table':[0,0,1] } )
         self.placement = np.diag([1, 1, 1])
         
+        self.pulpVars = pulp.LpVariable.matrix("officeOccupancy" ,(np.arange(3), np.arange(3)),cat='Binary')
+        self.model = pulp.LpProblem("Office setting maximizing happyness", pulp.LpMaximize)
+
+        #SetConstraints
+        for s  in np.sum(self.pulpVars, axis=0) : self.model += s <= 1
+        for s in np.sum(self.pulpVars, axis=1) : self.model += s == 1    
+
     def test_DefinePRBinCatConstraint_resultMax(self) :
         cons = Constraint( 'prBinCat', 'table', True, roomTag=['table'] )
         cons.DefinePRBinCatConstraint( self.placement, self.officeData, self.persoData )
@@ -999,6 +1006,17 @@ class TestConstraint( unittest.TestCase ):
         hap = cons.GetPRBinCatHappyness(np.diag([1, 1, 1]), self.officeData, self.persoData )
         self.assertTrue(np.allclose([2,2, 0], hap , rtol=1e-05, atol=1e-08))
 
+
+    def test_DefinePRBinCatConstraint_resultCons(self) :
+        cons = Constraint( 'prBinCat', 'table', False, roomTag=['table'], bound=1, valBound=1 )
+        cons.DefinePRBinCatConstraint( self.pulpVars, self.officeData, self.persoData )
+        cons.SetConstraint(self.model)
+        self.model.solve()
+        
+        self.assertAlmostEqual(0, cons.GetObjVal() )
+        x = ArrayFromPulpMatrix2D( self.pulpVars )
+        self.assertAlmostEqual(x[2][2], 0 )
+        
 #==========
 class TestRoomOptimisation( unittest.TestCase ):
     def setUp(self) :
