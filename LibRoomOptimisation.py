@@ -17,7 +17,7 @@ class Constraint() :
         self.bound = bound
         self.valBound = valBound
         self.roomTag = roomTag
-        
+        if not self.roomTag and self.__type in ['prBinCat', 'ppBinTag', 'ppCatTag' ] : raise RuntimeError( 'Constraint : Need roomTag for option ', self.label ) 
         self.wish = np.array([])
         self.dispo = np.array([])
         self.K = 2
@@ -30,7 +30,7 @@ class Constraint() :
     def GetObjVal(self) : 
         if not self.maxWeights : return 0
         elif 'pp' in self.__type : return pulp.lpSum(self.prodVars )
-        elif  self.__type == 'prBinCat' : return pulp.lpSum( np.dot(self.wish.T, self.dispo ))
+        elif  self.__type == 'prBinCat' : return  np.dot(self.wish.T, self.dispo ).sum()
         elif 'pr' in self.__type : return pulp.lpSum(np.multiply(self.wish, self.dispo))
         else : return 0
     
@@ -50,7 +50,7 @@ class Constraint() :
         self.K = max(np.fabs(persoData['weight'+self.label[0].upper()+self.label[1:]]).sum(),self.K)
         return self
     
-    def DefinePRBinCatConstraint( placement, officeData, persoData ) :
+    def DefinePRBinCatConstraint(self, placement, officeData, persoData ) :
         self.wish = persoData.loc[:, self.label].values
         officeFilter = pd.pivot_table(officeData.loc[:,[self.label]], columns=self.label, index=officeData.index, aggfunc=len).fillna(0)
         self.dispo = np.dot( placement, officeFilter )
@@ -112,16 +112,18 @@ class Constraint() :
         elif 'pp' in self.__type : return self.GetPPHappyness( x, officeData, persoData)
         
     def GetPRBinCatHappyness( self, placement, officeData, persoData ) : 
+
         self.DefinePRBinCatConstraint( placement, officeData, persoData )
         persoFilter = persoData.loc[:,self.label]
         officeFilter = pd.pivot_table(officeData.loc[:,self.roomTag], columns=self.roomTag, index=officeData.index, aggfunc=len).fillna(0) 
         
         self.wish = persoFilter
+
         self.dispo = np.dot( placement, officeFilter )
         self.dispo = np.dot( self.dispo, officeFilter.T)
         self.dispo = np.dot( self.dispo, placement.T)
         self.dispo = np.dot( self.dispo, persoFilter.T)
-        return np.myltiply( self.wish, self.dispo )
+        return np.multiply( self.wish, self.dispo )
         
     def GetPRHappyness( self, placement, officeData, persoData ) : 
         if self.label == 'prBin' : self.DefinPRBinConstraint(placement, officeData, persoData )
@@ -978,6 +980,24 @@ class TestSetConstraint(unittest.TestCase):
         SetPRBinConstraint( self.model, self.pulpVars, self.officeData, self.persoData, tags, bound, up=True )       
         self.model.solve()        
         self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
+
+#==========
+class TestConstraint( unittest.TestCase ):
+    def setUp(self) : 
+        self.persoData = pd.DataFrame({'table':[1, 1, 0] } )
+        self.officeData = pd.DataFrame({'table':[0,0,1] } )
+        self.placement = np.diag([1, 1, 1])
+        
+    def test_DefinePRBinCatConstraint_resultMax(self) :
+        cons = Constraint( 'prBinCat', 'table', True, roomTag=['table'] )
+        cons.DefinePRBinCatConstraint( self.placement, self.officeData, self.persoData )
+        
+        self.assertTrue(np.allclose([[1, 0], [1, 0], [0, 1]], cons.dispo , rtol=1e-05, atol=1e-08))
+         
+        self.assertAlmostEqual(2.0, cons.GetObjVal() )
+        
+        hap = cons.GetPRBinCatHappyness(np.diag([1, 1, 1]), self.officeData, self.persoData )
+        self.assertTrue(np.allclose([2,2, 0], hap , rtol=1e-05, atol=1e-08))
 
 #==========
 class TestRoomOptimisation( unittest.TestCase ):
