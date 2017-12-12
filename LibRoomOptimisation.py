@@ -311,7 +311,6 @@ def PrintOptimResults( placement
     print('diversityTag : ', diversityTag)
     if diversityTag : 
         Delta = GetCountPerOfficeProp( x, officeData, persoData, persoTags=diversityTag)
-        print('Delta : ', Delta.shape, x.shape, Delta)
         Delta = np.minimum(Delta, np.ones(Delta.shape))
         print('diversityTags : ' + ' '.join(diversityTag)+'\n', Delta)
         print('diversityObjective : ', Delta.sum())
@@ -329,9 +328,8 @@ def PrintOptimResults( placement
         print( '%s is given office %i with happyness %2.2f' % (row.Nom,row.office, row.totHappyness))
     
     resultFrame.to_csv('demenagement.csv')
-    #resultFrame[['xImage', 'yImage']] = officeData[['xImage', 'yImage']]
-    #DrawOutput( resultFrame, officeData[['xImage', 'yImage']] )
-   # print( 'total happyness spatial : ', resultFrame['happy'].sum())
+    resultFrame[['xImage', 'yImage']] = officeData[['xImage', 'yImage']]
+    DrawOutput( resultFrame, officeData[['xImage', 'yImage']] )
 
 #==========
 def DrawOutput( repartition, officeCoord ) :
@@ -445,7 +443,7 @@ def RoomOptimisation( officeData, persoData,
 
     #Objective function : 
     model += (
-            np.sum(delta)*10
+            np.sum(delta)*2
             + pulp.lpSum( c.GetObjVal() for c in constTag )
             )
     

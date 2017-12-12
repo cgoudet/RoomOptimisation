@@ -103,7 +103,7 @@ def main():
     
     persoData.loc[:,'Nom'] = persoData['Nom'].apply( lambda x : x.split('.')[0] +'.')
     TransformEtage( persoData, 'rawEtage' )
-    
+
     persoData['seul'] = persoData['rawSeul'].map(SeulTransform).fillna(0)
 
     for i in range(1, 4) :
@@ -120,7 +120,7 @@ def main():
     
     officeData = officeData[officeData['isCodir']==0]
     officeData = officeData[officeData['isGRC']==0]
-    print(persoData.head())   
+    print(persoData)   
 
     constTag = [Constraint('prBin', 'window', True ),
                 Constraint('prBin', 'clim', True ),
@@ -129,6 +129,8 @@ def main():
                 Constraint('prBin', 'secure', bound=-1, valBound=1),
                 Constraint('prBinCat', 'seul', True, roomTag=['seul'] ),
                 Constraint('prBinCat', 'isFace', bound=1, valBound=1 ),
+                Constraint('prBin', 'isAgathe', bound=-1, valBound=1),
+                Constraint('prBin', 'mur', bound=-1, valBound=1)
 #                Constraint('ppCat', 'perso1', True, roomTag=['roomID'] ),
 #                Constraint('ppCat', 'perso2', True, roomTag=['roomID'] ),
 #                Constraint('ppCat', 'perso3', True, roomTag=['roomID'] ),
