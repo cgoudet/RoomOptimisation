@@ -29,19 +29,16 @@ def PrintOfficeNumber(officeData):
     img.save('OfficeID.png')
 
 def ImportOffices( fileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\OfficeProperties.csv' ) :
-    dicoOffice = { 'mur':bool,
-                  'conf':bool,
-                  'window':bool, 
-                  'clim':bool,
-                  'etage':np.int8,
-                  'roomID':int,
-                  'isFace':int,
-                  'seul':int
-                  }
+
     data = pd.read_csv( fileName
                        , index_col='ID'
-                       ).fillna(0).astype(dicoOffice)
+                       )
     #data['xImage'], 'yImage']] = np.floor(data[['xImage', 'yImage']])
+    
+    fills = {'window':-1, 'clim':-1, 'passage':-1}
+    data.fillna(fills, inplace=True)
+    data.fillna(0, inplace=True)
+    
     return data
 
 #==========
@@ -74,7 +71,7 @@ def TransformScale( data, name, newName, increasing=True ) :
 #==========
 def EtageMatching( x ) :
     if x in [0, 3]: return [0, 0]
-    elif x < 3 : return [1, 6-3*x]
+    elif x < 3 : return [1, x*3]
     else : return [2, (x-3)*3]
 #==========
 def TransformEtage( data, name ) :
@@ -82,8 +79,8 @@ def TransformEtage( data, name ) :
 #==========
 def SeulTransform( x ) :
     if x in [0, 3 ] : return 0
-    elif x < 3 : return -3+x
-    else : return (x-3)
+    elif x < 3 : return (-3+x)*3
+    else : return (x-3)*3
 #==========
 def main():
     
@@ -98,28 +95,31 @@ def main():
     persoFileName = 'PersoPref.csv'
     persoFileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoPref.csv'
     persoData = ImportPerso( persoFileName )
-    print(persoData)
-    factors = {'rawWindow':1, 'rawClim':-1, 'rawPassage':1 }
-    for k, v in factors.items() : TransformScale( persoData, k, k.replace('raw', '').lower(), v==1)
-    
+
+
     persoData.loc[:,'Nom'] = persoData['Nom'].apply( lambda x : x.split('.')[0] +'.')
     TransformEtage( persoData, 'rawEtage' )
+    persoData['etage1'] = persoData['etage']
+    persoData['weightEtage1'] = -persoData['weightEtage']
+    persoData['etage2'] = persoData['etage']
+    persoData['weightEtage2'] = persoData['weightEtage']
+    
+    for v in ['window', 'clim', 'seul', 'passage' ] :
+        persoData[v] = persoData['raw'+v[0].upper()+v[1:]].map(SeulTransform).fillna(0)
 
-    persoData['seul'] = persoData['rawSeul'].map(SeulTransform).fillna(0)
-
+    persoData['clim'] = persoData['clim']*-1.
+    persoData['passage'] = persoData['passage']*-1.
+    
     for i in range(1, 4) :
-        persoData['weightPerso'+str(i)] = 7-2*i
+        persoData['weightPerso'+str(i)] = 6 - 3*i + max(i-1, 0)
         persoData['inPerso'+str(i)] = persoData['Nom']
         persoData['perso'+str(i)] = persoData['rawPerso'+str(i)]
-     
+
     persoPropName = 'PersoProp.csv'
     persoPropName = 'C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoProp.csv'
     persoProp = pd.read_csv( persoPropName ).fillna(0)
-    print('persoProp ', persoProp)
     persoData = pd.merge( persoData, persoProp, on='Nom')
-    print('postMerge : ', persoData)
     persoData = persoData[persoData['isCodir']<0.5]
-    print('postCodir : ', persoData)
 
     persoData = persoData[persoData['isGRC']==0]
     
@@ -131,16 +131,15 @@ def main():
     constTag = [Constraint('prBin', 'window', True ),
                 Constraint('prBin', 'clim', True ),
                 Constraint('prBin', 'passage', True ),
-                Constraint('prCat', 'etage', True ),
+                Constraint('prCat', 'etage1', True ),
+                Constraint('prCat', 'etage2', True ),
                 Constraint('prBin', 'secure', bound=-1, valBound=1),
                 Constraint('prBinCat', 'seul', True, roomTag=['seul'] ),
                 Constraint('prBinCat', 'isFace', bound=1, valBound=1 ),
                 Constraint('prBin', 'isAgathe', bound=-1, valBound=1),
                 Constraint('prBin', 'mur', bound=-1, valBound=1),
                 Constraint('prBinCat', 'phone', True, roomTag=['roomID']),
-                Constraint('ppCat', 'perso1', True, roomTag=['roomID'] ),
-#                Constraint('ppCat', 'perso2', True, roomTag=['roomID'] ),
-#                Constraint('ppCat', 'perso3', True, roomTag=['roomID'] ),
+                Constraint('ppCat', 'perso', True, roomTag=['roomID'] ),
                 ]
     t = time.time()
     model, placement = RoomOptimisation( officeData, persoData 
