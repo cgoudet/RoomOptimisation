@@ -136,7 +136,7 @@ class Constraint() :
             self.DefinePRCatConstraint(placement, officeData, persoData )
             return np.multiply( self.wish, self.dispo ).sum(1)
     
-    def GetPPBinHappyness( self, placement, officeData, persoData ) :
+    def GetPPHappyness( self, placement, officeData, persoData ) :
         inName = 'in'+self.label[0].upper() + self.label[1:]
         weightName = 'weight'+self.label[0].upper() + self.label[1:]
         
@@ -145,19 +145,19 @@ class Constraint() :
         
         if self.__type == 'ppBin' : self.wish = persoData.loc[:, [weightName]]
         else : 
-            self.wish = pd.pivot_table( persoData.loc[:, [inName]], columns=[inName], index=persoData.index, aggfunc=len).fillna(0)
+            self.wish = pd.pivot_table( persoData.loc[:,[weightName,self.label]], values=weightName, columns=[self.label], index=persoData.index, aggfunc='sum').fillna(0)
             self.wish = self.wish[commonLabels].values
-                 
-        self.dispo = np.dot(placement, officeFilter)
+        
+        self.dispo = np.dot(placement, officeFilter )
         self.dispo = np.dot(self.dispo, officeFilter.T)
         self.dispo = np.dot( self.dispo, placement.T)
 
-        persoFilter = pd.pivot_table( persoData.loc[:,[weightName,self.label]], values=weightName, columns=[self.label], index=persoData.index, aggfunc='sum').fillna(0)
-        persoFilter = persoFilter.loc[:,commonLabels]
-
-        self.dispo = np.dot( self.dispo, persoFilter.T)
+        persoFilter = pd.pivot_table( persoData.loc[:, [inName]], columns=[inName], index=persoData.index, aggfunc=len).fillna(0)
         
-        return np.multiply(self.wish, self.dispo)
+        persoFilter = persoFilter.loc[:,commonLabels]
+        self.dispo = np.dot( self.dispo, persoFilter)
+        
+        return np.multiply(self.wish, self.dispo).sum(1)
           
  
 #===========
@@ -371,7 +371,6 @@ def GetPPCatSingleMatching( placement, officeData, persoData, option, roomID=[] 
         officeFilter = np.dot( placement, officeFilter.values )
         persoDispo = np.dot( persoInOption.T, officeFilter)
         persoWish = np.dot( persoFilter.values.T, officeFilter)     
-        print(persoWish, persoDispo)
         return (persoWish, persoDispo)
 
 
@@ -695,7 +694,13 @@ class TestSetConstraint(unittest.TestCase):
 #==========
 class TestConstraint( unittest.TestCase ):
     def setUp(self) : 
-        self.persoData = pd.DataFrame({'table':[1, 1, 0], 'etage':[1,0,2], 'weightEtage':[1,1,2] } )
+        self.persoData = pd.DataFrame({'table':[1, 1, 0], 
+                                       'etage':[1,0,2], 
+                                       'weightEtage':[1,1,2],   
+                                       'inService':['SI','RH', 'SI'], 
+                                       'weightService':[3,8,6], 
+                                       'service':['SI', '', 'RH']
+                                      } )
         self.officeData = pd.DataFrame({'table':[0,0,1], 'etage':[1, 1, 2] } )
         self.placement = np.diag([1, 1, 1])
         
@@ -850,6 +855,23 @@ class TestConstraint( unittest.TestCase ):
         self.model.solve()
         
         self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
+        
+        # =============================================================================
+        #         PPCAT
+        #         
+        # =============================================================================
+        
+    def test_DefinePPCatConstraint_resultInput(self) : 
+        cons = Constraint( 'ppCat', 'service', True, roomTag=['etage'] )
+        cons.DefinePPConstraint(self.placement, self.officeData, self.persoData )
+    
+        self.assertTrue(np.allclose( [[0, 6], [3, 0]], cons.wish, rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose( [[1, 0], [1, 1]], cons.dispo, rtol=1e-05, atol=1e-08))
+ 
+        self.assertAlmostEqual(3, cons.GetObjVal() )
+        hap = cons.GetPPHappyness(self.placement, self.officeData, self.persoData )
+        self.assertTrue(np.allclose([3,0, 0], hap , rtol=1e-05, atol=1e-08))
+
         
 #==========
 class TestRoomOptimisation( unittest.TestCase ):

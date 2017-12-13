@@ -121,7 +121,7 @@ def main():
     persoData = persoData[persoData['isCodir']<0.5]
     print('postCodir : ', persoData)
 
-    persoData = persoData[persoData['isGRC']==0]
+    persoData = persoData[persoData['isGRC']==1]
     
     officeData = officeData[officeData['isCodir']==0]
     officeData = officeData[officeData['isGRC']==0]
@@ -138,7 +138,7 @@ def main():
                 Constraint('prBin', 'isAgathe', bound=-1, valBound=1),
                 Constraint('prBin', 'mur', bound=-1, valBound=1),
                 Constraint('prBinCat', 'phone', True, roomTag=['roomID']),
-#                Constraint('ppCat', 'perso1', True, roomTag=['roomID'] ),
+                Constraint('ppCat', 'perso1', True, roomTag=['roomID'] ),
 #                Constraint('ppCat', 'perso2', True, roomTag=['roomID'] ),
 #                Constraint('ppCat', 'perso3', True, roomTag=['roomID'] ),
                 ]
