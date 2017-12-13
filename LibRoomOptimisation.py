@@ -24,7 +24,7 @@ class Constraint() :
         self.K = 2
         self.prodVars = None
         self.binVars = None
-        self.multi = False
+        self.multi = multi
         
         self.inLabel = 'in' + self.label[0].upper() + self.label[1:]
         self.weightLabel = 'weight' + self.label[0].upper() + self.label[1:]
@@ -52,7 +52,8 @@ class Constraint() :
 
         self.prodVars = pulp.LpVariable.matrix( self.label+'Max', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
         self.binVars = pulp.LpVariable.matrix( self.label+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
-        self.K = max(np.fabs(persoData['weight'+self.label[0].upper()+self.label[1:]]).sum(),self.K)
+        labels = [self.weightLabel] if not self.multi else [ self.weightLabel+str(x) for x in self.GetColumnsOption(persoData)]
+        self.K = max(np.fabs(persoData[labels].values).sum(),self.K)
         return self
     
     #==========
@@ -64,15 +65,21 @@ class Constraint() :
     #==========
     def DefinePPCatConstraint(self, placement, officeData, persoData ) :
 
-        commonLabels = sorted(list(set(persoData[self.label]).intersection(persoData[self.inLabel])))
-        
+        suffix = self.GetColumnsOption(persoData) if self.multi else [''] 
+        usedOptions = [ self.label + str(x) for x in suffix]
+        commonLabels = sorted(list(set(persoData[usedOptions].values.ravel()).intersection(persoData[self.inLabel].values)))
+
         #self property of each person
         persoInOption = pd.pivot_table( persoData.loc[:, [self.inLabel]], columns=[self.inLabel], index=persoData.index, aggfunc=len).fillna(0)
-        persoInOption = persoInOption[commonLabels].values      
+        persoInOption = persoInOption[commonLabels].values 
+
         #weight for preferences of each person
-        persoFilter = pd.pivot_table( persoData.loc[:,[self.weightLabel,self.label]], values=self.weightLabel, columns=[self.label], index=persoData.index, aggfunc='sum').fillna(0)
+        persoFilter = pd.DataFrame()
+        for x in suffix :
+            table = pd.pivot_table( persoData.loc[:,[self.weightLabel+ str(x),self.label + str(x)]], values=self.weightLabel+ str(x), columns=[self.label + str(x)], index=persoData.index, aggfunc='sum').fillna(0)
+            persoFilter = persoFilter.add(table, fill_value=0)
+
         persoFilter = persoFilter.loc[:,commonLabels]
-        
         
         officeFilter = pd.pivot_table(officeData.loc[:, self.roomTag], columns=self.roomTag, index=officeData.index, aggfunc=len).fillna(0)
         officeFilter = np.dot( placement, officeFilter.values )
@@ -167,22 +174,34 @@ class Constraint() :
             return np.multiply( self.wish, self.dispo ).sum(1)
     
     def GetPPHappyness( self, placement, officeData, persoData ) :
-        inName = 'in'+self.label[0].upper() + self.label[1:]
-        weightName = 'weight'+self.label[0].upper() + self.label[1:]
         
         officeFilter = pd.pivot_table(officeData.loc[:,self.roomTag], columns=self.roomTag, index=officeData.index, aggfunc=len).fillna(0)
-        commonLabels = sorted(list(set(persoData[self.label]).intersection(persoData[inName])))
+
+        suffix = self.GetColumnsOption(persoData) if self.multi else [''] 
+        usedOptions = [ self.label + str(x) for x in suffix]
+        commonLabels = sorted(list(set(persoData[usedOptions].values.ravel()).intersection(persoData[self.inLabel].values)))
+
+
+        #weight for preferences of each person
+        persoFilter = pd.DataFrame()
+        for x in suffix :
+            table = pd.pivot_table( persoData.loc[:,[self.weightLabel+ str(x),self.label + str(x)]], values=self.weightLabel+ str(x), columns=[self.label + str(x)], index=persoData.index, aggfunc='sum').fillna(0)
+            persoFilter = persoFilter.add(table, fill_value=0)
         
-        if self.__type == 'ppBin' : self.wish = persoData.loc[:, [weightName]]
+        if self.__type == 'ppBin' : self.wish = persoData.loc[:, [self.weightLabel]]
         else : 
-            self.wish = pd.pivot_table( persoData.loc[:,[weightName,self.label]], values=weightName, columns=[self.label], index=persoData.index, aggfunc='sum').fillna(0)
+            self.wish = pd.DataFrame()
+            for x in suffix : 
+                table = pd.pivot_table( persoData.loc[:,[self.weightLabel+ str(x),self.label + str(x)]], values=self.weightLabel+ str(x), columns=[self.label + str(x)], index=persoData.index, aggfunc='sum').fillna(0)
+                self.wish = self.wish.add(table, fill_value=0)
+
             self.wish = self.wish[commonLabels].values
         
         self.dispo = np.dot(placement, officeFilter )
         self.dispo = np.dot(self.dispo, officeFilter.T)
         self.dispo = np.dot( self.dispo, placement.T)
 
-        persoFilter = pd.pivot_table( persoData.loc[:, [inName]], columns=[inName], index=persoData.index, aggfunc=len).fillna(0)
+        persoFilter = pd.pivot_table( persoData.loc[:, [self.inLabel]], columns=[self.inLabel], index=persoData.index, aggfunc=len).fillna(0)
         
         persoFilter = persoFilter.loc[:,commonLabels]
         self.dispo = np.dot( self.dispo, persoFilter)
@@ -677,11 +696,10 @@ class TestConstraint( unittest.TestCase ):
                                        'service':['SI', '', 'RH'],
                                        'perso0':['Dum1', 'Dum2', 'Dum0'],
                                        'perso1':['Dum2', '', 'Dum1'],
-                                       'inPerso0':['Dum0', 'Dum1', 'Dum2'],
+                                       'inPerso':['Dum0', 'Dum1', 'Dum2'],
                                        'weightPerso0':[3, 6, 8],
                                        'weightPerso1':[1, 2, 5],
                                       } )
-        self.persoData['inPerso1']=self.persoData['inPerso0']
         
         self.officeData = pd.DataFrame({'table':[0,0,1], 'etage':[1, 1, 2], 'roomID':[0,0,0] } )
         self.placement = np.diag([1, 1, 1])
@@ -881,6 +899,16 @@ class TestConstraint( unittest.TestCase ):
         self.assertTrue(np.allclose( [[6], [3]], cons.wish, rtol=1e-05, atol=1e-08))
         self.assertTrue(np.allclose( [[1], [2]], cons.dispo, rtol=1e-05, atol=1e-08))
 
+    def test_DefinePPCatConstraint_resultMulti(self) : 
+        cons = Constraint( 'ppCat', 'perso', True, roomTag=['etage'], multi=True )
+        cons.DefinePPConstraint(self.placement, self.officeData, self.persoData )
+    
+        self.assertTrue(np.allclose( [[0, 8], [3, 5], [7, 0]], cons.wish, rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose( [[1, 0], [1, 0], [0, 1]], cons.dispo, rtol=1e-05, atol=1e-08))
+ 
+        self.assertAlmostEqual(3, cons.GetObjVal() )
+        hap = cons.GetPPHappyness(self.placement, self.officeData, self.persoData )
+        self.assertTrue(np.allclose([3,0, 0], hap , rtol=1e-05, atol=1e-08))
         
 #==========
 class TestRoomOptimisation( unittest.TestCase ):
