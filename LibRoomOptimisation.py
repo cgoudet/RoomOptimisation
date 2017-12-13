@@ -56,6 +56,12 @@ class Constraint() :
         return self
     
     #==========
+    def GetColumnsOption(self, data) :
+        indices = [ int(x.replace(self.label, '')) for x in data.columns if self.label in x]
+        return indices
+        
+        
+    #==========
     def DefinePPCatConstraint(self, placement, officeData, persoData ) :
 
         commonLabels = sorted(list(set(persoData[self.label]).intersection(persoData[self.inLabel])))
@@ -595,6 +601,8 @@ class TestSetConstraint(unittest.TestCase):
         for s in np.sum(self.pulpVars, axis=1) : self.model += s == 1    
 
 
+        
+        
     def test_PPConstraint(self) :
         tag='phone'
         
@@ -666,8 +674,15 @@ class TestConstraint( unittest.TestCase ):
                                        'weightEtage':[1,1,2],   
                                        'inService':['SI','RH', 'SI'], 
                                        'weightService':[3,8,6], 
-                                       'service':['SI', '', 'RH']
+                                       'service':['SI', '', 'RH'],
+                                       'perso0':['Dum1', 'Dum2', 'Dum0'],
+                                       'perso1':['Dum2', '', 'Dum1'],
+                                       'inPerso0':['Dum0', 'Dum1', 'Dum2'],
+                                       'weightPerso0':[3, 6, 8],
+                                       'weightPerso1':[1, 2, 5],
                                       } )
+        self.persoData['inPerso1']=self.persoData['inPerso0']
+        
         self.officeData = pd.DataFrame({'table':[0,0,1], 'etage':[1, 1, 2], 'roomID':[0,0,0] } )
         self.placement = np.diag([1, 1, 1])
         
@@ -678,6 +693,10 @@ class TestConstraint( unittest.TestCase ):
         for s  in np.sum(self.pulpVars, axis=0) : self.model += s <= 1
         for s in np.sum(self.pulpVars, axis=1) : self.model += s == 1    
     
+    #==========
+    def test_GetColumnsOption(self) :
+        cons = Constraint( 'ppCat', 'perso', True, roomTag=['table'] )
+        self.assertTrue(np.allclose([0, 1], cons.GetColumnsOption(self.persoData) , rtol=1e-05, atol=1e-08))
     # =============================================================================
     # PRBINCAT
     # =============================================================================
