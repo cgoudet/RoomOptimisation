@@ -32,7 +32,7 @@ def ImportOffices( fileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Pr
 
     data = pd.read_csv( fileName
                        , index_col='ID'
-                       )
+                       ).fillna({'mur':0}).astype({'mur':bool})
     #data['xImage'], 'yImage']] = np.floor(data[['xImage', 'yImage']])
     
     fills = {'window':-1, 'clim':-1, 'passage':-1}
@@ -89,7 +89,7 @@ def main():
     #Read the input data for offices
     officeData = ImportOffices( officeFileName )
     officeData['phone']=officeData['roomID']
-    print(officeData.head())
+
 
     
     persoFileName = 'PersoPref.csv'
@@ -119,18 +119,21 @@ def main():
 #    persoPropName = 'C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoProp.csv'
     persoProp = pd.read_csv( persoPropName ).fillna(0)
     persoData = pd.merge( persoData, persoProp, on='Nom')
-    persoData = persoData[persoData['isCodir']<0.5]
+    # persoData = persoData[persoData['isCodir']<0.5]
 
-    persoData = persoData[persoData['isGRC']==0]
+    # persoData = persoData[persoData['isGRC']==0]
     
     officeData = officeData[officeData['isCodir']==0]
     officeData = officeData[officeData['isGRC']==0]
     officeData = officeData[officeData['isOut']==0]
     persoData.to_csv('persoData.csv')
-    
-    persoData = persoData[persoData['etage']!=2]
-    officeData = officeData[officeData['etage']!=2]
-    print(persoData[['etage', 'weightEtage']])   
+    return 0
+    persoData = persoData[persoData['etage']==2]
+    officeData = officeData[officeData['etage']==2]
+    # persoData.reset_index(inplace=True)
+    # officeData.reset_index(inplace=True)
+    print(officeData[['mur','passage', 'etage2']])
+    print(persoData[['Nom','etage2', 'weightEtage2']])   
 
     constTag = [Constraint('prBin', 'window', True ),
                 Constraint('prBin', 'clim', True ),
@@ -140,8 +143,8 @@ def main():
                 Constraint('prBin', 'secure', bound=-1, valBound=1),
                 Constraint('prBinCat', 'seul', True, roomTag=['seul'], removeSelf=True ),
                 Constraint('prBinCat', 'isFace', bound=1, valBound=1 ),
-                Constraint('prBin', 'isAgathe', bound=-1, valBound=1),
-                Constraint('prBin', 'mur', bound=-1, valBound=1),
+                # Constraint('prBin', 'isAgathe', bound=-1, valBound=1),
+                # Constraint('prBin', 'mur', bound=-1, valBound=1),
                 Constraint('prBinCat', 'phone', roomTag=['roomID'], bound=1, valBound=1),
                 Constraint('ppCat', 'perso', True, roomTag=['roomID'] , multi=True),
                 ]
@@ -151,7 +154,8 @@ def main():
                                         , constTag=constTag
                                         , printResults=True
                                         )
-    
+
+    model.writeLP( 'model.txt' )
     print('elapsed : ', time.time()-t)
     return 0
 

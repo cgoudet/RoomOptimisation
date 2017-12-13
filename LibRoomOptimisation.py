@@ -100,13 +100,11 @@ class Constraint() :
         officeFilter = pd.pivot_table(officeData.loc[:,[self.label]], columns=self.label, index=officeData.index, aggfunc=len).fillna(0)
 
         self.dispo = np.dot( placement, officeFilter )
-        if self.label == 'seul' :
-            print(self.dispo.shape)
-            print( self.wish.shape )
         
     def DefinePRBinConstraint( self, placement, officeData, persoData ) :
         self.wish = persoData.loc[:, self.label].values
         self.dispo = np.dot(placement, officeData.loc[:, self.label])
+
         
     def DefinePRCatConstraint( self, placement, officeData, persoData ) :
         weightName = 'weight' + self.label[0].upper() + self.label[1:]
@@ -120,7 +118,7 @@ class Constraint() :
         commonLabels = list(set(persoFilter.columns).intersection(officeFilter.columns))
         officeFilter = officeFilter.loc[:,commonLabels].values
         self.wish = persoFilter.loc[:,commonLabels].values
-        
+       
         #return the properties which have been allocated to each perso
         self.dispo = np.dot( placement, officeFilter )
     
@@ -143,7 +141,9 @@ class Constraint() :
     def SetPRBinConstraint(self, model ) : 
         tot = np.multiply(self.wish, self.dispo)
         for val in tot :
-            if not val : continue 
+            if not val : continue
+            if self.label == 'mur' :
+                print( 'mur constraint : ', val >= self.valBound )
             if self.bound>0 : model += val <= self.valBound
             elif self.bound<0 : model += val >= self.valBound
  
@@ -455,7 +455,7 @@ def RoomOptimisation( officeData, persoData,
                      printResults=False,
                      ) :
 
-    officeOccupancy = pulp.LpVariable.matrix("officeOccupancy" ,(list(persoData.index), list(officeData.index)),cat='Binary')
+    officeOccupancy = pulp.LpVariable.matrix("officeOccupancy" ,(list(persoData.index.values), list(officeData.index.values)), cat='Binary')
  
     
     doDiversity = diversityTag
@@ -484,13 +484,15 @@ def RoomOptimisation( officeData, persoData,
             np.sum(delta)
             + pulp.lpSum( c.GetObjVal() for c in constTag )
             )
-    
+
+
     #Each perso is set once
     for s  in np.sum(officeOccupancy, axis=0) : model += s <= 1
     
     #Each room is set at least once
     for s in np.sum(officeOccupancy, axis=1) : model += s == 1
-        
+
+    
     if doDiversity : 
         #Constraint of delta
         for s in range( nService ) :
@@ -502,7 +504,9 @@ def RoomOptimisation( officeData, persoData,
     for c in constTag  : c.SetConstraint( model )
     
     # Solve the maximisation problem
-    if minimize : model.solve()
+    if minimize :
+        model.solve()
+        if pulp.LpStatus[model.status] !='Optimal' : raise RuntimeError('Infeasible Model')
 
     if printResults : 
         PrintOptimResults( officeOccupancy
@@ -517,7 +521,7 @@ def RoomOptimisation( officeData, persoData,
         print('model status : ', pulp.LpStatus[model.status] )
         print('objective : ', pulp.value(model.objective) )
 
-   
+        
     return model, officeOccupancy
 
 #==========
@@ -714,7 +718,7 @@ class TestConstraint( unittest.TestCase ):
         self.officeData = pd.DataFrame({'table':[0,0,1], 'etage':[1, 1, 2], 'roomID':[0,0,0] } )
         self.placement = np.diag([1, 1, 1])
         
-        self.pulpVars = pulp.LpVariable.matrix("officeOccupancy" ,(np.arange(3), np.arange(3)),cat='Binary')
+        self.pulpVars = pulp.LpVariable.matrix("placement" ,(np.arange(3), np.arange(3)),cat='Binary')
         self.model = pulp.LpProblem("Office setting maximizing happyness", pulp.LpMaximize)
 
         #SetConstraints
