@@ -89,11 +89,8 @@ class Constraint() :
 
     def DefinePRBinCatConstraint(self, placement, officeData, persoData ) :
         self.wish = persoData.loc[:, self.label].values
-        print('wish : ', self.wish)
         officeFilter = pd.pivot_table(officeData.loc[:,[self.label]], columns=self.label, index=officeData.index, aggfunc=len).fillna(0)
-        print('officeFilter : ', officeFilter)
         self.dispo = np.dot( placement, officeFilter )
-        print('dispo : ', self.dispo)
         
     def DefinePRBinConstraint( self, placement, officeData, persoData ) :
         self.wish = persoData.loc[:, self.label].values
@@ -721,7 +718,6 @@ class TestConstraint( unittest.TestCase ):
     # =============================================================================
     
     def test_DefinePRBinCatConstraint_resultInput(self) :
-        print('\n\nbegin')
         self.persoData['table'] = [2, 3, 0]
         cons = Constraint( 'prBinCat', 'table', True, roomTag=['table'] )
         cons.DefinePRBinCatConstraint( self.placement, self.officeData, self.persoData )
@@ -732,7 +728,6 @@ class TestConstraint( unittest.TestCase ):
         self.assertAlmostEqual(5.0, cons.GetObjVal() )
         
         hap = cons.GetPRBinCatHappyness(np.diag([1, 1, 1]), self.officeData, self.persoData )
-        print(hap)
         self.assertTrue(np.allclose([4,6, 0], hap , rtol=1e-05, atol=1e-08))
 
 
