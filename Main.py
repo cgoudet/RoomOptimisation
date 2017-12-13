@@ -100,7 +100,7 @@ def main():
     persoData.loc[:,'Nom'] = persoData['Nom'].apply( lambda x : x.split('.')[0] +'.')
     TransformEtage( persoData, 'rawEtage' )
     persoData['etage1'] = persoData['etage']
-    persoData['weightEtage1'] = -persoData['weightEtage']
+    persoData['weightEtage1'] = persoData['weightEtage']
     persoData['etage2'] = persoData['etage']
     persoData['weightEtage2'] = persoData['weightEtage']
     
@@ -126,11 +126,11 @@ def main():
     officeData = officeData[officeData['isCodir']==0]
     officeData = officeData[officeData['isGRC']==0]
     officeData = officeData[officeData['isOut']==0]
-    persoData.to_csv('dum.csv')
+    persoData.to_csv('persoData.csv')
     
-    persoData = persoData[persoData['etage']==2]
-    officeData = officeData[officeData['etage']==2]
-    print(persoData)   
+    persoData = persoData[persoData['etage']!=2]
+    officeData = officeData[officeData['etage']!=2]
+    print(persoData[['etage', 'weightEtage']])   
 
     constTag = [Constraint('prBin', 'window', True ),
                 Constraint('prBin', 'clim', True ),
