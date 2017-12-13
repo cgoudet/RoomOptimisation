@@ -112,7 +112,7 @@ def main():
     
     persoData['inPerso'] = persoData['Nom']
     for i in range(1, 4) :
-        persoData['weightPerso'+str(i)] = 6 - 3*i + max(i-1, 0)      
+        persoData['weightPerso'+str(i)] = 6 - 3*(i-1) + max(i-2, 0)      
         persoData['perso'+str(i)] = persoData['rawPerso'+str(i)]
 
     persoPropName = 'PersoProp.csv'
@@ -126,6 +126,10 @@ def main():
     officeData = officeData[officeData['isCodir']==0]
     officeData = officeData[officeData['isGRC']==0]
     officeData = officeData[officeData['isOut']==0]
+    persoData.to_csv('dum.csv')
+    
+    persoData = persoData[persoData['etage']==2]
+    officeData = officeData[officeData['etage']==2]
     print(persoData)   
 
     constTag = [Constraint('prBin', 'window', True ),
