@@ -7,7 +7,14 @@ from PIL import Image, ImageFont, ImageDraw
 
 
 class Constraint() :
-    def __init__(self, typ, label, maxWeights = False, bound=0, valBound=0, roomTag=[], multi=False ):
+    def __init__(self, typ, label
+                 , maxWeights = False
+                 , bound=0
+                 , valBound=0
+                 , roomTag=[]
+                 , multi=False
+                 , removeSelf = False
+    ):
         self.acceptedTypes = ['ppBin', 'ppCat', 'prBin', 'prCat', 'prBinCat']
         if typ not in self.acceptedTypes : raise RuntimeError('Constraint : Wrong type for constraint. Accepted types : ' + ' '.join(self.acceptedTypes))
         self.__type = typ
@@ -28,13 +35,14 @@ class Constraint() :
         
         self.inLabel = 'in' + self.label[0].upper() + self.label[1:]
         self.weightLabel = 'weight' + self.label[0].upper() + self.label[1:]
-    
+        self.removeSelf = removeSelf
+        
     def GetType(self) : return self.__type
     
     def GetObjVal(self) : 
         if not self.maxWeights : return 0
         elif 'pp' in self.__type : return pulp.lpSum(self.prodVars )
-        elif  self.__type == 'prBinCat' : return  np.dot(self.wish.T, self.dispo ).sum()
+        elif  self.__type == 'prBinCat' : return  np.dot(self.wish.T, self.dispo ).sum() - ( self.wish if self.removeSelf else 0 )
         elif 'pr' in self.__type : return np.multiply(self.wish, self.dispo).sum()
         else : return 0
     
@@ -90,7 +98,11 @@ class Constraint() :
     def DefinePRBinCatConstraint(self, placement, officeData, persoData ) :
         self.wish = persoData.loc[:, self.label].values
         officeFilter = pd.pivot_table(officeData.loc[:,[self.label]], columns=self.label, index=officeData.index, aggfunc=len).fillna(0)
+
         self.dispo = np.dot( placement, officeFilter )
+        if self.label == 'seul' :
+            print(self.dispo.shape)
+            print( self.wish.shape )
         
     def DefinePRBinConstraint( self, placement, officeData, persoData ) :
         self.wish = persoData.loc[:, self.label].values
@@ -161,7 +173,7 @@ class Constraint() :
         self.dispo = np.dot( placement, officeFilter ).sum(0)
         self.dispo = np.dot( officeFilter, self.dispo.T )
         self.dispo = np.dot( placement, self.dispo )
-        return np.multiply( self.wish, self.dispo )
+        return np.multiply( self.wish, self.dispo ) - ( self.wish if self.removeSelf else 0 )
         
     def GetPRHappyness( self, placement, officeData, persoData ) : 
         if self.__type == 'prBin' : 
@@ -376,12 +388,12 @@ def PrintOptimResults( placement
     
     resultFrame.to_csv('demenagement.csv')
     resultFrame[['xImage', 'yImage']] = officeData[['xImage', 'yImage']]
-  #  DrawOutput( resultFrame, officeData[['xImage', 'yImage']] )
+    DrawOutput( resultFrame, officeData[['xImage', 'yImage']] )
 
 #==========
 def DrawOutput( repartition, officeCoord ) :
 
-    img = Image.open("Offices.png")
+    img = Image.open("OfficeID.png")
     draw = ImageDraw.Draw(img)
 #    # font = ImageFont.truetype(<font-file>, <font-size>)
 #    font = ImageFont.truetype("sans-serif.ttf", 16)

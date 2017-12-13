@@ -128,8 +128,8 @@ def main():
     officeData = officeData[officeData['isOut']==0]
     persoData.to_csv('persoData.csv')
     
-    persoData = persoData[persoData['etage']==2]
-    officeData = officeData[officeData['etage']==2]
+    persoData = persoData[persoData['etage']!=2]
+    officeData = officeData[officeData['etage']!=2]
     print(persoData[['etage', 'weightEtage']])   
 
     constTag = [Constraint('prBin', 'window', True ),
@@ -138,11 +138,11 @@ def main():
                 Constraint('prCat', 'etage1', True ),
                 Constraint('prCat', 'etage2', True ),
                 Constraint('prBin', 'secure', bound=-1, valBound=1),
-                Constraint('prBinCat', 'seul', True, roomTag=['seul'] ),
+                Constraint('prBinCat', 'seul', True, roomTag=['seul'], removeSelf=True ),
                 Constraint('prBinCat', 'isFace', bound=1, valBound=1 ),
                 Constraint('prBin', 'isAgathe', bound=-1, valBound=1),
                 Constraint('prBin', 'mur', bound=-1, valBound=1),
-#                Constraint('prBinCat', 'phone', True, roomTag=['roomID']),
+                Constraint('prBinCat', 'phone', roomTag=['roomID'], bound=1, valBound=1),
                 Constraint('ppCat', 'perso', True, roomTag=['roomID'] , multi=True),
                 ]
     t = time.time()
