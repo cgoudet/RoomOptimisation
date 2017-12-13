@@ -121,7 +121,7 @@ def main():
     persoData = persoData[persoData['isCodir']<0.5]
     print('postCodir : ', persoData)
 
-    persoData = persoData[persoData['isGRC']==1]
+    persoData = persoData[persoData['isGRC']==0]
     
     officeData = officeData[officeData['isCodir']==0]
     officeData = officeData[officeData['isGRC']==0]
