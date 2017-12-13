@@ -85,7 +85,7 @@ def SeulTransform( x ) :
 def main():
     
     officeFileName = 'OfficeProperties.csv'
-    officeFileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\OfficeProperties.csv'
+#    officeFileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\OfficeProperties.csv'
     #Read the input data for offices
     officeData = ImportOffices( officeFileName )
     officeData['phone']=officeData['roomID']
@@ -93,7 +93,7 @@ def main():
 
     
     persoFileName = 'PersoPref.csv'
-    persoFileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoPref.csv'
+ #   persoFileName='C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoPref.csv'
     persoData = ImportPerso( persoFileName )
 
 
@@ -116,7 +116,7 @@ def main():
         persoData['perso'+str(i)] = persoData['rawPerso'+str(i)]
 
     persoPropName = 'PersoProp.csv'
-    persoPropName = 'C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoProp.csv'
+#    persoPropName = 'C:\\Users\\Christophe GOUDET\\Google Drive\\Zim\\Projets\\GestionLits\\PersoProp.csv'
     persoProp = pd.read_csv( persoPropName ).fillna(0)
     persoData = pd.merge( persoData, persoProp, on='Nom')
     persoData = persoData[persoData['isCodir']<0.5]
@@ -139,7 +139,7 @@ def main():
                 Constraint('prBin', 'isAgathe', bound=-1, valBound=1),
                 Constraint('prBin', 'mur', bound=-1, valBound=1),
                 Constraint('prBinCat', 'phone', True, roomTag=['roomID']),
-                Constraint('ppCat', 'perso', True, roomTag=['roomID'] ),
+#                Constraint('ppCat', 'perso', True, roomTag=['roomID'] ),
                 ]
     t = time.time()
     model, placement = RoomOptimisation( officeData, persoData 

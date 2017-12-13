@@ -378,7 +378,7 @@ def PrintOptimResults( placement
     
     resultFrame.to_csv('demenagement.csv')
     resultFrame[['xImage', 'yImage']] = officeData[['xImage', 'yImage']]
-    DrawOutput( resultFrame, officeData[['xImage', 'yImage']] )
+  #  DrawOutput( resultFrame, officeData[['xImage', 'yImage']] )
 
 #==========
 def DrawOutput( repartition, officeCoord ) :
