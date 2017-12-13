@@ -110,9 +110,9 @@ def main():
     persoData['clim'] = persoData['clim']*-1.
     persoData['passage'] = persoData['passage']*-1.
     
+    persoData['inPerso'] = persoData['Nom']
     for i in range(1, 4) :
-        persoData['weightPerso'+str(i)] = 6 - 3*i + max(i-1, 0)
-        persoData['inPerso'+str(i)] = persoData['Nom']
+        persoData['weightPerso'+str(i)] = 6 - 3*i + max(i-1, 0)      
         persoData['perso'+str(i)] = persoData['rawPerso'+str(i)]
 
     persoPropName = 'PersoProp.csv'
@@ -139,7 +139,7 @@ def main():
                 Constraint('prBin', 'isAgathe', bound=-1, valBound=1),
                 Constraint('prBin', 'mur', bound=-1, valBound=1),
                 Constraint('prBinCat', 'phone', True, roomTag=['roomID']),
-#                Constraint('ppCat', 'perso', True, roomTag=['roomID'] ),
+                Constraint('ppCat', 'perso', True, roomTag=['roomID'] , multi=True),
                 ]
     t = time.time()
     model, placement = RoomOptimisation( officeData, persoData 
