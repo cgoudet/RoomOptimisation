@@ -46,7 +46,7 @@ class Constraint() :
         else : raise RuntimeError( 'DefineConstraint : Unknown type for Constraint : ', self.__type )
         
     def DefinePPConstraint(self, placement, officeData, persoData ) : 
-        if 'Cat' in self.__type : self.GetPPCatSingleMatching( placement, officeData, persoData )
+        if 'Cat' in self.__type : self.DefinePPCatConstraint( placement, officeData, persoData )
         else : (self.wish, self.dispo) = GetPPBinMatching( placement, officeData, persoData, [self.label], roomID=self.roomTag )
         s = self.wish.shape
 
@@ -56,7 +56,7 @@ class Constraint() :
         return self
     
     #==========
-    def GetPPCatSingleMatching(self, placement, officeData, persoData ) :
+    def DefinePPCatConstraint(self, placement, officeData, persoData ) :
 
         commonLabels = sorted(list(set(persoData[self.label]).intersection(persoData[self.inLabel])))
         
@@ -387,7 +387,7 @@ def MultiplyWithFilter( weights, filt ) :
 
 #==========
 def GetPPCatMatching( placement, officeData, persoData, properties, roomID=[] ):
-    result = [GetPPCatSingleMatching( placement, officeData, persoData, opt, roomID ) for opt in properties ]
+    result = [DefinePPCatConstraint( placement, officeData, persoData, opt, roomID ) for opt in properties ]
     return result   
 
 #==========
@@ -839,18 +839,18 @@ class TestConstraint( unittest.TestCase ):
         hap = cons.GetPPHappyness(self.placement, self.officeData, self.persoData )
         self.assertTrue(np.allclose([3,0, 0], hap , rtol=1e-05, atol=1e-08))
     
-    def test_GetPPCatSingleMatching_result(self ) :
+    def test_DefinePPCatConstraint_result(self ) :
         cons = Constraint('ppCat', 'service', roomTag=['roomID'])  
-        cons.GetPPCatSingleMatching( np.diag([1,1, 1]), self.officeData, self.persoData)
+        cons.DefinePPCatConstraint( np.diag([1,1, 1]), self.officeData, self.persoData)
         self.assertTrue(np.allclose( [[6], [3]], cons.wish, rtol=1e-05, atol=1e-08))
         self.assertTrue(np.allclose( [[1], [2]], cons.dispo, rtol=1e-05, atol=1e-08))
     
-    def test_GetPPCatSingleMatching_resultSelfLiking(self ) :
+    def test_DefinePPCatConstraint_resultSelfLiking(self ) :
         #Self liking is accepted
         self.persoData = pd.DataFrame({'inService':['SI','RH'], 'weightService':[3,8], 'service':['RH', 'RH'] })
         self.officeData = pd.DataFrame({'roomID':[0,1]})   
         cons = Constraint('ppCat', 'service', roomTag=['roomID'])  
-        cons.GetPPCatSingleMatching( np.diag([1,1]), self.officeData, self.persoData )
+        cons.DefinePPCatConstraint( np.diag([1,1]), self.officeData, self.persoData )
 
         self.assertTrue(np.allclose( [[3, 8]], cons.wish, rtol=1e-05, atol=1e-08))
         self.assertTrue(np.allclose( [[0, 1]], cons.dispo, rtol=1e-05, atol=1e-08))
@@ -858,7 +858,7 @@ class TestConstraint( unittest.TestCase ):
     def test_resultDiffNumberRoomPerso(self ) :
         cons = Constraint('ppCat', 'service', roomTag=['roomID'])
         self.officeData = pd.DataFrame({'roomID':[0,0,0,0]})     
-        cons.GetPPCatSingleMatching( np.array([[1,0,0, 0], [0, 1, 0, 0], [0, 0, 1, 0]]), self.officeData, self.persoData )
+        cons.DefinePPCatConstraint( np.array([[1,0,0, 0], [0, 1, 0, 0], [0, 0, 1, 0]]), self.officeData, self.persoData )
         self.assertTrue(np.allclose( [[6], [3]], cons.wish, rtol=1e-05, atol=1e-08))
         self.assertTrue(np.allclose( [[1], [2]], cons.dispo, rtol=1e-05, atol=1e-08))
 
@@ -978,7 +978,6 @@ class TestRoomOptimisation( unittest.TestCase ):
         officeData = pd.DataFrame({'roomID':[0,1]})
         constTag = [Constraint('ppCat', 'service', maxWeights=True, roomTag=['roomID'] )]
         model, placement = RoomOptimisation( officeData, persoData, constTag=constTag )
-
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 6 )
 
