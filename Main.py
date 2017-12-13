@@ -126,6 +126,10 @@ def main():
     officeData = officeData[officeData['isCodir']==0]
     officeData = officeData[officeData['isGRC']==0]
     officeData = officeData[officeData['isOut']==0]
+   # persoData.to_csv('dum.csv')
+    
+    persoData = persoData[persoData['etage']==2]
+    officeData = officeData[officeData['etage']==2]
     print(persoData)   
 
     constTag = [Constraint('prBin', 'window', True ),

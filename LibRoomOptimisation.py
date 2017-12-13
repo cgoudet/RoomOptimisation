@@ -89,8 +89,11 @@ class Constraint() :
 
     def DefinePRBinCatConstraint(self, placement, officeData, persoData ) :
         self.wish = persoData.loc[:, self.label].values
+        print('wish : ', self.wish)
         officeFilter = pd.pivot_table(officeData.loc[:,[self.label]], columns=self.label, index=officeData.index, aggfunc=len).fillna(0)
+        print('officeFilter : ', officeFilter)
         self.dispo = np.dot( placement, officeFilter )
+        print('dispo : ', self.dispo)
         
     def DefinePRBinConstraint( self, placement, officeData, persoData ) :
         self.wish = persoData.loc[:, self.label].values
@@ -158,11 +161,9 @@ class Constraint() :
         officeFilter = pd.pivot_table(officeData.loc[:,self.roomTag], columns=self.roomTag, index=officeData.index, aggfunc=len).fillna(0) 
         
         self.wish = persoFilter
-
-        self.dispo = np.dot( placement, officeFilter )
-        self.dispo = np.dot( self.dispo, officeFilter.T)
-        self.dispo = np.dot( self.dispo, placement.T)
-        self.dispo = np.dot( self.dispo, persoFilter.T)
+        self.dispo = np.dot( placement, officeFilter ).sum(0)
+        self.dispo = np.dot( officeFilter, self.dispo.T )
+        self.dispo = np.dot( placement, self.dispo )
         return np.multiply( self.wish, self.dispo )
         
     def GetPRHappyness( self, placement, officeData, persoData ) : 
@@ -720,16 +721,19 @@ class TestConstraint( unittest.TestCase ):
     # =============================================================================
     
     def test_DefinePRBinCatConstraint_resultInput(self) :
+        print('\n\nbegin')
+        self.persoData['table'] = [2, 3, 0]
         cons = Constraint( 'prBinCat', 'table', True, roomTag=['table'] )
         cons.DefinePRBinCatConstraint( self.placement, self.officeData, self.persoData )
         
-        self.assertTrue(np.allclose([1,1, 0], cons.wish , rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose([2,3, 0], cons.wish , rtol=1e-05, atol=1e-08))
         self.assertTrue(np.allclose([[1, 0], [1, 0], [0, 1]], cons.dispo , rtol=1e-05, atol=1e-08))
          
-        self.assertAlmostEqual(2.0, cons.GetObjVal() )
+        self.assertAlmostEqual(5.0, cons.GetObjVal() )
         
         hap = cons.GetPRBinCatHappyness(np.diag([1, 1, 1]), self.officeData, self.persoData )
-        self.assertTrue(np.allclose([2,2, 0], hap , rtol=1e-05, atol=1e-08))
+        print(hap)
+        self.assertTrue(np.allclose([4,6, 0], hap , rtol=1e-05, atol=1e-08))
 
 
     def test_DefinePRBinCatConstraint_resultConsUp(self) :
