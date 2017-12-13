@@ -7,23 +7,27 @@ from PIL import Image, ImageFont, ImageDraw
 
 
 class Constraint() :
-    def __init__(self, typ, label, maxWeights = False, bound=0, valBound=0, roomTag=[] ):
+    def __init__(self, typ, label, maxWeights = False, bound=0, valBound=0, roomTag=[], multi=False ):
         self.acceptedTypes = ['ppBin', 'ppCat', 'prBin', 'prCat', 'prBinCat']
         if typ not in self.acceptedTypes : raise RuntimeError('Constraint : Wrong type for constraint. Accepted types : ' + ' '.join(self.acceptedTypes))
         self.__type = typ
         
+        if label == '' : raise RuntimeError('Constraint : Empty label')
         self.label = label
         self.maxWeights=maxWeights
         self.bound = bound
         self.valBound = valBound
         self.roomTag = roomTag
-        if not self.roomTag and self.__type in [ 'ppBinTag', 'ppCatTag' ] : raise RuntimeError( 'Constraint : Need roomTag for option ', self.label ) 
+        if not self.roomTag and self.__type in [ 'ppBin', 'ppCat' ] : raise RuntimeError( 'Constraint : Need roomTag for option ', self.label ) 
         self.wish = np.array([])
         self.dispo = np.array([])
         self.K = 2
         self.prodVars = None
         self.binVars = None
+        self.multi = False
         
+        self.inLabel = 'in' + self.label[0].upper() + self.label[1:]
+        self.weightLabel = 'weight' + self.label[0].upper() + self.label[1:]
     
     def GetType(self) : return self.__type
     
@@ -42,14 +46,34 @@ class Constraint() :
         else : raise RuntimeError( 'DefineConstraint : Unknown type for Constraint : ', self.__type )
         
     def DefinePPConstraint(self, placement, officeData, persoData ) : 
-        if 'Cat' in self.__type : (self.wish, self.dispo) = GetPPCatSingleMatching( placement, officeData, persoData, self.label, roomID=self.roomTag )
+        if 'Cat' in self.__type : self.GetPPCatSingleMatching( placement, officeData, persoData )
         else : (self.wish, self.dispo) = GetPPBinMatching( placement, officeData, persoData, [self.label], roomID=self.roomTag )
         s = self.wish.shape
-        self.prodVars =  pulp.LpVariable.matrix( self.label+'Max', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
-        self.binVars =  pulp.LpVariable.matrix( self.label+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
+
+        self.prodVars = pulp.LpVariable.matrix( self.label+'Max', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
+        self.binVars = pulp.LpVariable.matrix( self.label+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
         self.K = max(np.fabs(persoData['weight'+self.label[0].upper()+self.label[1:]]).sum(),self.K)
         return self
     
+    #==========
+    def GetPPCatSingleMatching(self, placement, officeData, persoData ) :
+
+        commonLabels = sorted(list(set(persoData[self.label]).intersection(persoData[self.inLabel])))
+        
+        #self property of each person
+        persoInOption = pd.pivot_table( persoData.loc[:, [self.inLabel]], columns=[self.inLabel], index=persoData.index, aggfunc=len).fillna(0)
+        persoInOption = persoInOption[commonLabels].values      
+        #weight for preferences of each person
+        persoFilter = pd.pivot_table( persoData.loc[:,[self.weightLabel,self.label]], values=self.weightLabel, columns=[self.label], index=persoData.index, aggfunc='sum').fillna(0)
+        persoFilter = persoFilter.loc[:,commonLabels]
+        
+        
+        officeFilter = pd.pivot_table(officeData.loc[:, self.roomTag], columns=self.roomTag, index=officeData.index, aggfunc=len).fillna(0)
+        officeFilter = np.dot( placement, officeFilter.values )
+        self.dispo = np.dot( persoInOption.T, officeFilter)
+        self.wish = np.dot( persoFilter.values.T, officeFilter)     
+
+
     def DefinePRBinCatConstraint(self, placement, officeData, persoData ) :
         self.wish = persoData.loc[:, self.label].values
         officeFilter = pd.pivot_table(officeData.loc[:,[self.label]], columns=self.label, index=officeData.index, aggfunc=len).fillna(0)
@@ -352,26 +376,6 @@ def NormalizePersoPref( persoData, options ) :
         s = np.sqrt((persoData.loc[:,opt]**2).sum(1))
         persoData.loc[:,opt] = (persoData.loc[:,opt].T / s).T
         
-#==========
-def GetPPCatSingleMatching( placement, officeData, persoData, option, roomID=[] ) :
-        if not roomID : roomID = GetRoomIndex(officeData)
-        inOption = 'in' + option[0].upper() + option[1:]
-        weightName = 'weight' + option[0].upper() + option[1:]
-        commonLabels = sorted(list(set(persoData[option]).intersection(persoData[inOption])))
-        
-        #self property of each person
-        persoInOption = pd.pivot_table( persoData.loc[:, [inOption]], columns=[inOption], index=persoData.index, aggfunc=len).fillna(0)
-        persoInOption = persoInOption[commonLabels].values      
-        #weight for preferences of each person
-        persoFilter = pd.pivot_table( persoData.loc[:,[weightName,option]], values=weightName, columns=[option], index=persoData.index, aggfunc='sum').fillna(0)
-        persoFilter = persoFilter.loc[:,commonLabels]
-        
-        
-        officeFilter = pd.pivot_table(officeData.loc[:, roomID], columns=roomID, index=officeData.index, aggfunc=len).fillna(0)
-        officeFilter = np.dot( placement, officeFilter.values )
-        persoDispo = np.dot( persoInOption.T, officeFilter)
-        persoWish = np.dot( persoFilter.values.T, officeFilter)     
-        return (persoWish, persoDispo)
 
 
         
@@ -533,43 +537,6 @@ class TestTestInput( unittest.TestCase):
         self.assertTrue( TestInput(data, options))            
 
 #==========
-class TestGetPPCatSingleMatching(unittest.TestCase):
-    
-    def test_result(self ) :
-        perso = pd.DataFrame({'inService':['SI','RH', 'SI'], 'weightService':[3,8,6], 'service':['SI', '', 'RH'] })
-        office = pd.DataFrame({'roomID':[0,0,0]})     
-        (persoWish, persoDispo) = GetPPCatSingleMatching( np.diag([1,1, 1]), office, perso, 'service')
-        self.assertTrue(np.allclose( [[6], [3]], persoWish, rtol=1e-05, atol=1e-08))
-        self.assertTrue(np.allclose( [[1], [2]], persoDispo, rtol=1e-05, atol=1e-08))
-    
-    def test_resultSelfLiking(self ) :
-        #Self liking is accepted
-        perso = pd.DataFrame({'inService':['SI','RH'], 'weightService':[3,8], 'service':['RH', 'RH'] })
-        office = pd.DataFrame({'roomID':[0,1]})     
-        (persoWish, persoDispo) = GetPPCatSingleMatching( np.diag([1,1]), office, perso, 'service')
-        self.assertTrue(np.allclose( [[3, 8]], persoWish, rtol=1e-05, atol=1e-08))
-        self.assertTrue(np.allclose( [[0, 1]], persoDispo, rtol=1e-05, atol=1e-08))
-        
-    def test_resultDiffNumberRoomPerso(self ) :
-        perso = pd.DataFrame({'inService':['SI','RH', 'SI'], 'weightService':[3,8,6], 'service':['SI', '', 'RH'] })
-        office = pd.DataFrame({'roomID':[0,0,0,0]})     
-        (persoWish, persoDispo) = GetPPCatSingleMatching( np.array([[1,0,0, 0], [0, 1, 0, 0], [0, 0, 1, 0]]), office, perso, 'service')
-        self.assertTrue(np.allclose( [[6], [3]], persoWish, rtol=1e-05, atol=1e-08))
-        self.assertTrue(np.allclose( [[1], [2]], persoDispo, rtol=1e-05, atol=1e-08))
-
-
-#==========
-class TestGetPPCatMatching(unittest.TestCase):
-    
-    def test_result(self ) :
-        perso = pd.DataFrame({'inService':['SI','RH', 'SI'], 'weightService':[3,8,6], 'service':['SI', '', 'RH'] })
-        office = pd.DataFrame({'roomID':[0,0,0]})     
-        (wish, dispo) = GetPPCatMatching( np.diag([1,1, 1]), office, perso, ['service'])[0]
-        self.assertTrue(np.allclose( [[6], [3]], wish, rtol=1e-05, atol=1e-08))
-        self.assertTrue(np.allclose( [[1], [2]], dispo, rtol=1e-05, atol=1e-08))
-
-
-#==========
 class TestGetPPBinSingleMatching(unittest.TestCase):
     
     def test_resultNegWeight(self ) :
@@ -701,7 +668,7 @@ class TestConstraint( unittest.TestCase ):
                                        'weightService':[3,8,6], 
                                        'service':['SI', '', 'RH']
                                       } )
-        self.officeData = pd.DataFrame({'table':[0,0,1], 'etage':[1, 1, 2] } )
+        self.officeData = pd.DataFrame({'table':[0,0,1], 'etage':[1, 1, 2], 'roomID':[0,0,0] } )
         self.placement = np.diag([1, 1, 1])
         
         self.pulpVars = pulp.LpVariable.matrix("officeOccupancy" ,(np.arange(3), np.arange(3)),cat='Binary')
@@ -871,6 +838,29 @@ class TestConstraint( unittest.TestCase ):
         self.assertAlmostEqual(3, cons.GetObjVal() )
         hap = cons.GetPPHappyness(self.placement, self.officeData, self.persoData )
         self.assertTrue(np.allclose([3,0, 0], hap , rtol=1e-05, atol=1e-08))
+    
+    def test_GetPPCatSingleMatching_result(self ) :
+        cons = Constraint('ppCat', 'service', roomTag=['roomID'])  
+        cons.GetPPCatSingleMatching( np.diag([1,1, 1]), self.officeData, self.persoData)
+        self.assertTrue(np.allclose( [[6], [3]], cons.wish, rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose( [[1], [2]], cons.dispo, rtol=1e-05, atol=1e-08))
+    
+    def test_GetPPCatSingleMatching_resultSelfLiking(self ) :
+        #Self liking is accepted
+        self.persoData = pd.DataFrame({'inService':['SI','RH'], 'weightService':[3,8], 'service':['RH', 'RH'] })
+        self.officeData = pd.DataFrame({'roomID':[0,1]})   
+        cons = Constraint('ppCat', 'service', roomTag=['roomID'])  
+        cons.GetPPCatSingleMatching( np.diag([1,1]), self.officeData, self.persoData )
+
+        self.assertTrue(np.allclose( [[3, 8]], cons.wish, rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose( [[0, 1]], cons.dispo, rtol=1e-05, atol=1e-08))
+        
+    def test_resultDiffNumberRoomPerso(self ) :
+        cons = Constraint('ppCat', 'service', roomTag=['roomID'])
+        self.officeData = pd.DataFrame({'roomID':[0,0,0,0]})     
+        cons.GetPPCatSingleMatching( np.array([[1,0,0, 0], [0, 1, 0, 0], [0, 0, 1, 0]]), self.officeData, self.persoData )
+        self.assertTrue(np.allclose( [[6], [3]], cons.wish, rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose( [[1], [2]], cons.dispo, rtol=1e-05, atol=1e-08))
 
         
 #==========
@@ -986,16 +976,16 @@ class TestRoomOptimisation( unittest.TestCase ):
         #Check self liking
         persoData = pd.DataFrame({'inService':['RH','SI'], 'service':['SI','SI'], 'weightService':[3,6]})
         officeData = pd.DataFrame({'roomID':[0,1]})
-        constTag = [Constraint('ppCat', 'service', maxWeights=True )]
+        constTag = [Constraint('ppCat', 'service', maxWeights=True, roomTag=['roomID'] )]
         model, placement = RoomOptimisation( officeData, persoData, constTag=constTag )
-        
+
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
         self.assertEqual(pulp.value(model.objective), 6 )
 
     def test_resultPPBinUpBound(self):
         self.officeData.loc[0,'roomID']=1
         self.persoData['weightPhone']=[1, 0, 0]
-        constTag = [Constraint('ppBin', 'phone', maxWeights=False, bound=1, valBound=0 )]
+        constTag = [Constraint('ppBin', 'phone', maxWeights=False, bound=1, valBound=0, roomTag=['roomID'] )]
         model, placement = RoomOptimisation( self.officeData, self.persoData, constTag=constTag )
         
         self.assertEqual(pulp.LpStatus[model.status], 'Optimal' )
