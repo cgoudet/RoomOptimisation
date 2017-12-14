@@ -40,6 +40,9 @@ class Constraint() :
     def GetType(self) : return self.__type
     
     def GetObjVal(self) : 
+        """
+        Return the value of the objective function
+        """
         if not self.maxWeights : return 0
         elif 'pp' in self.__type : return pulp.lpSum(self.prodVars )
         elif  self.__type == 'prBinCat' : return  np.dot(self.wish.T, self.dispo ).sum() - ( self.wish if self.removeSelf else 0 )
@@ -47,6 +50,10 @@ class Constraint() :
         else : return 0
     
     def DefineConstraint(self, placement, officeData, persoData ) :
+        """
+        Call the Define constraint correspoinding to the constraint type.
+        DefineConstraint fills self.wish and self.dispo according to the requirement of the constraint type
+        """
         if 'pp' in self.__type  : self.DefinePPConstraint( placement, officeData, persoData )
         elif self.__type == 'prBin' : self.DefinePRBinConstraint( placement, officeData, persoData )
         elif self.__type == 'prCat' : self.DefinePRCatConstraint( placement, officeData, persoData )
@@ -54,6 +61,16 @@ class Constraint() :
         else : raise RuntimeError( 'DefineConstraint : Unknown type for Constraint : ', self.__type )
         
     def DefinePPConstraint(self, placement, officeData, persoData ) : 
+        """
+        Compute the wish and dispo arrays of options liking persons.
+        Compute the K as a value impossible to reach for any sum of weights.
+        Create the continuous pulp variables representing the product of wish and dispo.
+        Create the pulp binary variables representing wether a dispo value is null or not.
+        
+        The persons which interact must belong to the same entity tagged by self.roomTag.
+        
+        
+        """
         if 'Cat' in self.__type : self.DefinePPCatConstraint( placement, officeData, persoData )
         else : (self.wish, self.dispo) = GetPPBinMatching( placement, officeData, persoData, [self.label], roomID=self.roomTag )
         s = self.wish.shape
