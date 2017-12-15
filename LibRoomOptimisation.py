@@ -867,7 +867,7 @@ class TestConstraint( unittest.TestCase ):
         hap = cons.GetPPHappyness(self.placement, self.officeData, self.persoData )
         self.assertTrue(np.allclose([3,0, 0], hap , rtol=1e-05, atol=1e-08))
 
-#    def test_DefinePPCatConstraint_resultConsUp(self) :
+#    def test_DefinePPCCatConstraint_resultConsUp(self) :
 #        cons = Constraint( 'ppCat', 'perso1', False, bound=1, valBound=0, roomTag=['roomID'] )
 #        cons.DefinePPCatConstraint( self.pulpVars, self.officeData, self.persoData )
 #        cons.SetConstraint(self.model)
@@ -926,26 +926,31 @@ class TestConstraint( unittest.TestCase ):
         self.assertAlmostEqual(0, cons.GetObjVal() )
         
         self.assertAlmostEqual(x[1][2], 1 )
+        
+    #==========
+    def test_DefinePPBinConstraint_resultConsDownMax(self) :
+        self.persoData.loc[2:'weightPhone']=3
+        cons = Constraint( 'ppBin', 'phone', True, bound=-1, valBound=1, roomTag=['etage'] )
+        cons.DefinePPConstraint( self.pulpVars, self.officeData, self.persoData )
+        cons.SetConstraint(self.model)
+        self.model.solve()
 
-#    def test_DefinePRCatConstraint_resultConsDownMax(self) :
-#        cons = Constraint( 'prCat', 'etage', True, bound=-1, valBound=1 )
-#        cons.DefinePRCatConstraint( self.pulpVars, self.officeData, self.persoData )
-#        cons.SetConstraint(self.model)
-#        self.model.solve()
-#
-#        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
-#        self.assertAlmostEqual(3, cons.GetObjVal() )
-#        x = ArrayFromPulpMatrix2D( self.pulpVars )
-#        self.assertAlmostEqual(x[2][2], 1 )
-#
-#    def test_DefinePRCatConstraint_resultInfeas(self) :
-#
-#        cons = Constraint( 'prCat', 'etage', True, bound=-1, valBound=3 )
-#        cons.DefinePRCatConstraint( self.pulpVars, self.officeData, self.persoData )
-#        cons.SetConstraint(self.model)
-#        self.model.solve()
-#
-#        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        self.assertAlmostEqual(1, cons.GetObjVal() )
+        x = ArrayFromPulpMatrix2D( self.pulpVars )
+        self.assertAlmostEqual(x[0][2], 1 )
+
+    #==========
+    def test_DefinePPBinConstraint_resultInfeas(self) :
+        self.persoData.loc[0,'inPhone']=1
+        print(self.persoData[['weightPhone', 'inPhone']])
+        cons = Constraint( 'ppBin', 'phone', True, bound=-1, valBound=1, roomTag=['etage'] )
+        cons.DefineConstraint( self.pulpVars, self.officeData, self.persoData )
+
+        cons.SetConstraint(self.model)
+        self.model.solve()
+
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Undefined' )
 
 
 #==========
