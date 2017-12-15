@@ -91,7 +91,6 @@ class Constraint() :
         The persons which interact must belong to the same entity tagged by self.roomTag.
         
         """
-        print(self.__type)
         if 'Cat' in self.__type : self.DefinePPCatConstraint( placement, officeData, persoData )
         else : self.DefinePPBinConstraint( placement, officeData, persoData )
         s = self.wish.shape
@@ -135,6 +134,7 @@ class Constraint() :
         
         
         """
+        if self.__type != 'ppCat' : raise RuntimeError('Constraint::DefinePPCatConstraint : not using proper type.')
         suffix = self.GetColumnsOption(persoData) if self.multi else ['']
         usedOptions = [ self.label + str(x) for x in suffix]
         commonLabels = sorted(list(set(persoData.loc[:,usedOptions].values.ravel()).intersection(persoData[self.inLabel].values)))
@@ -676,6 +676,7 @@ class TestConstraint( unittest.TestCase ):
     def test_GetColumnsOption(self) :
         cons = Constraint( 'ppCat', 'perso', True, roomTag=['table'] )
         self.assertTrue(np.allclose([0, 1], cons.GetColumnsOption(self.persoData) , rtol=1e-05, atol=1e-08))
+        
     # =============================================================================
     # PRBINCAT
     # =============================================================================
@@ -838,12 +839,6 @@ class TestConstraint( unittest.TestCase ):
         hap = cons.GetPPHappyness(self.placement, self.officeData, self.persoData )
         self.assertTrue(np.allclose([3,0, 0], hap , rtol=1e-05, atol=1e-08))
 
-    def test_DefinePPCatConstraint_result(self ) :
-        cons = Constraint('ppCat', 'service', roomTag=['roomID'])
-        cons.DefinePPCatConstraint( np.diag([1,1, 1]), self.officeData, self.persoData)
-        self.assertTrue(np.allclose( [[6], [3]], cons.wish, rtol=1e-05, atol=1e-08))
-        self.assertTrue(np.allclose( [[1], [2]], cons.dispo, rtol=1e-05, atol=1e-08))
-
     def test_DefinePPCatConstraint_resultSelfLiking(self ) :
         #Self liking is accepted
         self.persoData = pd.DataFrame({'inService':['SI','RH'], 'weightService':[3,8], 'service':['RH', 'RH'] })
@@ -872,6 +867,37 @@ class TestConstraint( unittest.TestCase ):
         hap = cons.GetPPHappyness(self.placement, self.officeData, self.persoData )
         self.assertTrue(np.allclose([3,0, 0], hap , rtol=1e-05, atol=1e-08))
 
+#    def test_DefinePPCatConstraint_resultConsUp(self) :
+#        cons = Constraint( 'ppCat', 'perso1', False, bound=1, valBound=0, roomTag=['roomID'] )
+#        cons.DefinePPCatConstraint( self.pulpVars, self.officeData, self.persoData )
+#        cons.SetConstraint(self.model)
+#        self.model.solve()
+#        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+#
+#        self.assertAlmostEqual(0, cons.GetObjVal() )
+#        x = ArrayFromPulpMatrix2D( self.pulpVars )
+#        self.assertAlmostEqual(x[0][2], 1 )
+
+#    def test_DefinePRCatConstraint_resultConsDownMax(self) :
+#        cons = Constraint( 'prCat', 'etage', True, bound=-1, valBound=1 )
+#        cons.DefinePRCatConstraint( self.pulpVars, self.officeData, self.persoData )
+#        cons.SetConstraint(self.model)
+#        self.model.solve()
+#
+#        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+#        self.assertAlmostEqual(3, cons.GetObjVal() )
+#        x = ArrayFromPulpMatrix2D( self.pulpVars )
+#        self.assertAlmostEqual(x[2][2], 1 )
+#
+#    def test_DefinePRCatConstraint_resultInfeas(self) :
+#
+#        cons = Constraint( 'prCat', 'etage', True, bound=-1, valBound=3 )
+#        cons.DefinePRCatConstraint( self.pulpVars, self.officeData, self.persoData )
+#        cons.SetConstraint(self.model)
+#        self.model.solve()
+#
+#        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
+
     # =============================================================================
     # 
     # PPBIN
@@ -887,6 +913,40 @@ class TestConstraint( unittest.TestCase ):
         self.assertAlmostEqual(-1, cons.GetObjVal() )
         hap = cons.GetPPHappyness(self.placement, self.officeData, self.persoData )
         self.assertTrue(np.allclose([-2, 0, 1], hap , rtol=1e-05, atol=1e-08))
+
+    #==========
+    def test_DefinePPBinConstraint_resultConsUp(self) :
+        cons = Constraint( 'ppBin', 'phone', False, bound=1, valBound=0, roomTag=['etage'] )
+        cons.DefinePPConstraint( self.pulpVars, self.officeData, self.persoData )
+        cons.SetConstraint(self.model)
+        self.model.solve()
+        x = ArrayFromPulpMatrix2D( self.pulpVars )
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+
+        self.assertAlmostEqual(0, cons.GetObjVal() )
+        
+        self.assertAlmostEqual(x[1][2], 1 )
+
+#    def test_DefinePRCatConstraint_resultConsDownMax(self) :
+#        cons = Constraint( 'prCat', 'etage', True, bound=-1, valBound=1 )
+#        cons.DefinePRCatConstraint( self.pulpVars, self.officeData, self.persoData )
+#        cons.SetConstraint(self.model)
+#        self.model.solve()
+#
+#        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+#        self.assertAlmostEqual(3, cons.GetObjVal() )
+#        x = ArrayFromPulpMatrix2D( self.pulpVars )
+#        self.assertAlmostEqual(x[2][2], 1 )
+#
+#    def test_DefinePRCatConstraint_resultInfeas(self) :
+#
+#        cons = Constraint( 'prCat', 'etage', True, bound=-1, valBound=3 )
+#        cons.DefinePRCatConstraint( self.pulpVars, self.officeData, self.persoData )
+#        cons.SetConstraint(self.model)
+#        self.model.solve()
+#
+#        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
+
 
 #==========
 class TestRoomOptimisation( unittest.TestCase ):
