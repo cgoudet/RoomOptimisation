@@ -62,7 +62,7 @@ class Constraint() :
         """
         Return the suffix of the columns which are to be used in multi mode.
         """
-        indices = [ int(x.replace(self.label, '')) for x in data.columns if self.label in x]
+        indices = [ int(x.replace(self.label, '')) for x in data.columns if self.label in x and x.replace(self.label, '')!='' ]
         return indices
 
 
@@ -161,7 +161,7 @@ class Constraint() :
     #==========
     def DefinePRBinCatConstraint(self, placement, officeData, persoData ) :
         """
-        Fills the wish and dispo for ppBinCat constraints
+        Fills the wish and dispo for prBinCat constraints
         
         wish ( user x 1) contains the weight a user i attributes to having a ressource with the labelled property.
         
@@ -193,14 +193,17 @@ class Constraint() :
         
         dispo ( user x cat ) contains the weights from each category which have been attributed to each user.
         """
-        
-        weightName = 'weight' + self.label[0].upper() + self.label[1:]
+        suffix = self.GetColumnsOption(persoData) if self.multi else ['']
 
         #returns which property has the office
         officeFilter = pd.pivot_table(officeData.loc[:,[self.label]], columns=self.label, index=officeData.index, aggfunc=len).fillna(0)
 
         #return the weight that a person attribute to being allocaetd category i
-        persoFilter = pd.pivot_table(persoData, values=weightName, columns=self.label, index=persoData.index, aggfunc='sum').fillna(0)
+       # persoFilter = pd.pivot_table(persoData, values=self.weightLabel, columns=self.label, index=persoData.index, aggfunc='sum').fillna(0)
+        persoFilter = pd.DataFrame()
+        for x in suffix :
+            table = pd.pivot_table(persoData, values=self.weightLabel+str(x), columns=self.label+str(x), index=persoData.index, aggfunc='sum').fillna(0)
+            persoFilter = persoFilter.add(table, fill_value=0)
 
         commonLabels = list(set(persoFilter.columns).intersection(officeFilter.columns))
         officeFilter = officeFilter.loc[:,commonLabels].values
@@ -664,9 +667,13 @@ class TestConstraint( unittest.TestCase ):
                                        'weightPerso1':[1, 2, 5],
                                        'inPhone':[0, 1, 1],
                                        'weightPhone':[-2, 0, 1],
+                                       'etage1':[2, 0, 1],
+                                       'weightEtage1':[3,6,1]
                                       } )
         self.persoData['inPerso1']=self.persoData['inPerso']
         self.persoData['inPerso0']=self.persoData['inPerso']
+        self.persoData['etage0'] = self.persoData['etage'] 
+        self.persoData['weightEtage0'] = self.persoData['weightEtage'] 
 
         self.officeData = pd.DataFrame({'table':[0,0,1], 'etage':[1, 1, 2], 'roomID':[0,0,0] } )
         self.placement = np.diag([1, 1, 1])
@@ -823,6 +830,24 @@ class TestConstraint( unittest.TestCase ):
         self.assertAlmostEqual(3, pulp.value(cons.GetObjVal()) )
         x = ArrayFromPulpMatrix2D( self.pulpVars )
         self.assertAlmostEqual(x[2][2], 1 )
+
+    def test_DefinePRCatConstraint_resultMulti(self) :
+        print(self.persoData[['etage0', 'weightEtage0', 'etage1', 'weightEtage1']])
+        cons = Constraint( 'prCat', 'etage', True, multi=True )
+        cons.DefinePRCatConstraint( self.pulpVars, self.officeData, self.persoData )
+        self.model+=cons.GetObjVal()
+        cons.SetConstraint(self.model)
+        self.model.solve()
+        
+        print('wish : ', cons.wish )
+        print( 'dispo : ', cons.dispo )
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        x = ArrayFromPulpMatrix2D( self.pulpVars )
+        print(x)
+        self.assertAlmostEqual(4, pulp.value(cons.GetObjVal()) )
+        
+        self.assertAlmostEqual(x[0][2], 1 )
+
 
     def test_DefinePRCatConstraint_resultInfeas(self) :
 
