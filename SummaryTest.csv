@@ -11,6 +11,7 @@ Status Up,1,1,1,,1
 Status Infeas,1,1,1,,1
 Placement Max,1,1,1,,1
 Placement Constraint,1,1,1,,1
-multi,,,,1,
+multi,,,,1,-
 negative  dispo,,,,,
 Non 1 weights dispo,,,,,
+Non 1 negative dispo,,,,-,

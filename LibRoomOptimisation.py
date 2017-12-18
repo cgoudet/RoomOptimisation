@@ -32,7 +32,8 @@ class Constraint() :
         self.prodVars = None
         self.binVars = None
         self.multi = multi
-
+        self.posDispo=None
+        
         self.inLabel = 'in' + self.label[0].upper() + self.label[1:]
         self.weightLabel = 'weight' + self.label[0].upper() + self.label[1:]
         self.removeSelf = removeSelf
@@ -99,6 +100,7 @@ class Constraint() :
         self.binVars = pulp.LpVariable.matrix( self.label+'Bin', (np.arange(s[0]), np.arange(s[1])), cat='Binary' )
         labels = [self.weightLabel] if not self.multi else [ self.weightLabel+str(x) for x in self.GetColumnsOption(persoData)]
         self.K = max(np.fabs(persoData[labels].values).sum(),self.K)
+        self.posDispo = pulp.LpVariable.matrix( self.label+'PosDispo', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
         return self
 
 
@@ -269,6 +271,8 @@ class Constraint() :
                 model += self.prodVars[i][j] <= self.K * self.dispo[i][j]
                 model += self.prodVars[i][j] >= - self.K * self.dispo[i][j]
                 model += self.prodVars[i][j] >= -2 * self.K + self.wish[i][j] + 2*self.K * self.binVars[i][j]
+#                model += self.posDispo[i][j] + self.dispo[i][j] / self.K <= 0
+#                model += self.posDispo[i][j] - self.dispo[i][j] / self.K >= 0 
                 if self.bound>0 : model += self.prodVars[i][j] <= ( self.valBound - self.K )*self.binVars[i][j] + self.K
                 elif self.bound<0 :  model += self.prodVars[i][j] >= (self.valBound + self.K)*self.binVars[i][j] - self.K
 
@@ -915,6 +919,31 @@ class TestConstraint( unittest.TestCase ):
         self.assertTrue(np.allclose([-2, 0, 1], hap , rtol=1e-05, atol=1e-08))
 
     #==========
+    def test_DefinePPBinConstraint_resultNegDispo(self) :
+        self.persoData['inPhone']*=-1
+        cons = Constraint( 'ppBin', 'phone', roomTag=['etage'], maxWeights=True)
+        cons.DefinePPBinConstraint( self.placement, self.officeData, self.persoData )
+
+        self.assertTrue(np.allclose( [-2, 1], cons.wish, rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose( [-1, -1], cons.dispo, rtol=1e-05, atol=1e-08))
+
+        self.assertAlmostEqual(1, cons.GetObjVal() )
+        hap = cons.GetPPHappyness(self.placement, self.officeData, self.persoData )
+        self.assertTrue(np.allclose([2, 0, -1], hap , rtol=1e-05, atol=1e-08))
+
+    #==========
+    def test_DefinePPBinConstraint_resultNon1Dispo(self) :
+        self.persoData.loc[2,'inPhone']=2
+        cons = Constraint( 'ppBin', 'phone', roomTag=['etage'], maxWeights=True)
+        cons.DefinePPBinConstraint( self.placement, self.officeData, self.persoData )
+
+        self.assertTrue(np.allclose( [-2, 1], cons.wish, rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose( [1, 2], cons.dispo, rtol=1e-05, atol=1e-08))
+        self.assertAlmostEqual(0, pulp.value(cons.GetObjVal()) )
+        hap = cons.GetPPHappyness(self.placement, self.officeData, self.persoData )
+        self.assertTrue(np.allclose([-2, 0, 2], hap , rtol=1e-05, atol=1e-08))
+
+    #==========
     def test_DefinePPBinConstraint_resultConsUp(self) :
         cons = Constraint( 'ppBin', 'phone', False, bound=1, valBound=0, roomTag=['etage'] )
         cons.DefinePPConstraint( self.pulpVars, self.officeData, self.persoData )
@@ -943,7 +972,6 @@ class TestConstraint( unittest.TestCase ):
     #==========
     def test_DefinePPBinConstraint_resultInfeas(self) :
         self.persoData.loc[0,'inPhone']=1
-        print(self.persoData[['weightPhone', 'inPhone']])
         cons = Constraint( 'ppBin', 'phone', True, bound=-1, valBound=1, roomTag=['etage'] )
         cons.DefineConstraint( self.pulpVars, self.officeData, self.persoData )
 
