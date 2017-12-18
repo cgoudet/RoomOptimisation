@@ -897,25 +897,29 @@ class TestConstraint( unittest.TestCase ):
         self.model.solve()
         self.assertEqual(pulp.LpStatus[self.model.status], 'Undefined' )
 
-#    def test_DefinePRCatConstraint_resultConsDownMax(self) :
-#        cons = Constraint( 'prCat', 'etage', True, bound=-1, valBound=1 )
-#        cons.DefinePRCatConstraint( self.pulpVars, self.officeData, self.persoData )
-#        cons.SetConstraint(self.model)
-#        self.model.solve()
-#
-#        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
-#        self.assertAlmostEqual(3, cons.GetObjVal() )
-#        x = ArrayFromPulpMatrix2D( self.pulpVars )
-#        self.assertAlmostEqual(x[2][2], 1 )
-#
-#    def test_DefinePRCatConstraint_resultInfeas(self) :
-#
-#        cons = Constraint( 'prCat', 'etage', True, bound=-1, valBound=3 )
-#        cons.DefinePRCatConstraint( self.pulpVars, self.officeData, self.persoData )
-#        cons.SetConstraint(self.model)
-#        self.model.solve()
-#
-#        self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
+    def test_DefinePPCatConstraint_resultConsUpMax(self) :
+        cons = Constraint( 'ppCat', 'perso1', True, bound=1, valBound=1,roomTag=['etage'] )
+        cons.DefinePPConstraint( self.pulpVars, self.officeData, self.persoData )
+        self.model+=cons.GetObjVal()
+        cons.SetConstraint(self.model)
+        self.model.solve()
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+
+        self.assertAlmostEqual(1, pulp.value(cons.GetObjVal()) )
+        x = ArrayFromPulpMatrix2D( self.pulpVars )
+        self.assertAlmostEqual(x[1][2], 1 )
+
+    def test_DefinePPCatConstraint_resultConsUp(self) :
+        cons = Constraint( 'ppCat', 'perso1', True, bound=1, valBound=0,roomTag=['etage'] )
+        cons.DefinePPConstraint( self.pulpVars, self.officeData, self.persoData )
+        self.model+=cons.GetObjVal()
+        cons.SetConstraint(self.model)
+        self.model.solve()
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+
+        self.assertAlmostEqual(0, pulp.value(cons.GetObjVal()) )
+        x = ArrayFromPulpMatrix2D( self.pulpVars )
+        self.assertAlmostEqual(x[2][2], 1 )
 
     # =============================================================================
     # 

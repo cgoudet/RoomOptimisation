@@ -4,12 +4,12 @@ dispo,1,1,1,1,1
 happyness,1,1,1,1,1
 Objective Input,1,1,1,1,1
 Objective Max,1,1,1,1,1
-Objective Up,1,1,1,,1
-Objective max Up,1,1,1,,1
-Status max,1,1,1,,1
-Status Up,1,1,1,,1
+Objective Up,1,1,1,1,1
+Objective max Up,1,1,1,1,1
+Status max,1,1,1,1,1
+Status Up,1,1,1,1,1
 Status Infeas,1,1,1,1,1
-Placement Max,1,1,1,,1
+Placement Max,1,1,1,1,1
 Placement Constraint,1,1,1,1,1
 multi,,,,1,-
 negative  dispo,,,,,
