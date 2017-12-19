@@ -66,10 +66,16 @@ class Constraint() :
     
     The prBin option is representative of the case in which an user desires to be on an office next to a window.
         
-    The objective function of this option corresponds the sum of weights for a property
+    The objective function of this option corresponds the sum of weights of users times the level of of fitting of the their office within the property.
+    o = sum( Wt . X . R ) (Wt . X . R is a (nUser x 1) matrix)
+    
+    constraints can be added as follow : (Wt.X.R)_i <= (>=) valBoud iff (Wt.X.R)_i!=0.
+    The condition (Wt.X.R)_i!=0 means that this matrix element must be null whatever the value of X.
         
-        
-        - prCat : the user give a preference on one of serveral possible outcome of a categorical property.
+    The level of agreement between user preferences and final allocation (called happyness) is given by :
+        h = Wt . X . R
+    
+    ## prCat : the user give a preference on one of serveral possible outcome of a categorical property.
         
         - prBinTag : the user has a preference of having a property within the structure to which its ressources belong.
         
