@@ -7,6 +7,74 @@ from PIL import Image, ImageFont, ImageDraw
 
 
 class Constraint() :
+    """
+    The Constraint class proposes a common framework to include various types of constraints into an optimisation model.
+    The possible constraints, as well as their usage, are described in the following with examples from the attribution of offices (ressources) allocated to workers (users).
+    
+    # General usage of constraint 
+    
+    ## Constraint attributes
+    
+    All Constraint usage have the same user interface, whatever the type of constraints to inject in the model.
+    A Constraint object is created through a single constructor with :
+        - mandatory variables : 
+            - type : type of constraint (the authorised types are described below)
+            - label : the name of the constraint, which is related to the columns of the inputs datasets which contain the data.
+        
+        - optional variables : 
+            - maxWeights : wether to use this constraint in the objective function. 
+            - bound : wether to add a constraint on the model. 
+            boud = 0 adds no constraint, bound=1 add an upper limit et bound=-1 adds a lower limit.
+            - valBound : value to use as a limit for the bound option
+            - roomTag : columns indices to group ressources into blocs with shared properties.
+            - multi : wether to add users preferences from multiple columns
+            - removeSelf : wether to remove the contribution of a user on itself in the objective function and/or constraint.
+        
+    ## Constraint usage
+    The interface of Constraint to include constraints into an optimisation model is common for all types.
+    
+    - Instantiate your object using the common constructor, includig all your desired option.
+    - Call DefineConstraint() with your data to setup your object. 
+    This function fills two arrays, wish and dispo, which respectively represent the distribution of weights and properties allocation as a function of the allocation matrix.
+    - Call GetObjVal() to include the objective function into the model. 
+    If maxWeights has been initialized as false, GetObjeVal will return 0.
+    - Call SetConstraint() to include lower or upper limits to your variables.
+    SetConstraint() is mandatory for ppBin and ppCat types. 
+    In other types, it has no effects if bound=0
+    - Once the model is optimize, a check on the distribution of contribution of each constraint to the objective function is possible by calling GetHappyness().
+    
+    # Types description
+    5 types of constraints are currently available.
+    
+    In the following, X will represent the allocation matrix which value is 1 iff a person i is allocated office j, 0 otherwise.
+    In allocation models, this matrix usually have the constraint to have a single 1 per line and per column.
+    
+    R will reprensent the ressource properties matrix. R_jr = 1 iff the office j has the ressource r.
+    This matrix usually represent the group in which a ressource belong. 
+    In particular for the office allocation to worker, this corresponds to the repartition of offices among rooms.
+    
+    W will represent the matrix representing the weights attributed by users to a given property.
+    
+    P will represent the users distribution over users properties.
+    For example, it represents P_is =1 iff a user i belongs to a service s.
+    
+    ## prBin 
+    
+    In the prBin constraint, the user attributes a weight (preference) on having a ressources with the labelled property.
+    A given ressources can be given an amount of fulfillment of the property. 
+    Negative weights can be attributed to a ressource.
+    
+    The prBin option is representative of the case in which an user desires to be on an office next to a window.
+        
+    The objective function of this option corresponds the sum of weights for a property
+        
+        
+        - prCat : the user give a preference on one of serveral possible outcome of a categorical property.
+        
+        - prBinTag : the user has a preference of having a property within the structure to which its ressources belong.
+        
+        - ppCat
+    """
     def __init__(self, typ, label
                  , maxWeights = False
                  , bound=0
@@ -791,6 +859,33 @@ class TestConstraint( unittest.TestCase ):
 
         self.assertEqual(pulp.LpStatus[self.model.status], 'Infeasible' )
 
+    def test_DefinePRBinConstraint_resultNegDispo(self) :
+        self.officeData.loc[1,'table']=-2
+        cons = Constraint( 'prBin', 'table', True  )
+        cons.DefinePRBinConstraint( self.pulpVars, self.officeData, self.persoData )
+        self.model+=cons.GetObjVal()
+        cons.SetConstraint(self.model)
+        self.model.solve()
+
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        self.assertAlmostEqual(1, pulp.value(cons.GetObjVal() ))
+        x = ArrayFromPulpMatrix2D( self.pulpVars )
+        self.assertAlmostEqual(x[2][1], 1 )
+
+    def test_DefinePRBinConstraint_resultNegNeg(self) :
+        self.officeData.loc[1,'table']=-2
+        self.persoData.loc[2,'table']=-3
+        cons = Constraint( 'prBin', 'table', True  )
+        cons.DefinePRBinConstraint( self.pulpVars, self.officeData, self.persoData )
+        self.model+=cons.GetObjVal()
+        cons.SetConstraint(self.model)
+        self.model.solve()
+
+        self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
+        self.assertAlmostEqual(7, pulp.value(cons.GetObjVal() ))
+        x = ArrayFromPulpMatrix2D( self.pulpVars )
+        self.assertAlmostEqual(x[2][1], 1 )
+
     # =============================================================================
     # PRCAT
     # =============================================================================
@@ -832,18 +927,14 @@ class TestConstraint( unittest.TestCase ):
         self.assertAlmostEqual(x[2][2], 1 )
 
     def test_DefinePRCatConstraint_resultMulti(self) :
-        print(self.persoData[['etage0', 'weightEtage0', 'etage1', 'weightEtage1']])
         cons = Constraint( 'prCat', 'etage', True, multi=True )
         cons.DefinePRCatConstraint( self.pulpVars, self.officeData, self.persoData )
         self.model+=cons.GetObjVal()
         cons.SetConstraint(self.model)
         self.model.solve()
         
-        print('wish : ', cons.wish )
-        print( 'dispo : ', cons.dispo )
         self.assertEqual(pulp.LpStatus[self.model.status], 'Optimal' )
         x = ArrayFromPulpMatrix2D( self.pulpVars )
-        print(x)
         self.assertAlmostEqual(4, pulp.value(cons.GetObjVal()) )
         
         self.assertAlmostEqual(x[0][2], 1 )
