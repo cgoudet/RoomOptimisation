@@ -67,7 +67,7 @@ class Constraint() :
     The prBin option is representative of the case in which an user desires to be on an office next to a window.
         
     The objective function of this option corresponds the sum of weights of users times the level of of fitting of the their office within the property.
-    o = sum( Wt . X . R ) (Wt . X . R is a (nUser x 1) matrix)
+    o = sum_i( Wt . X . R ) (Wt . X . R is a (nUser x 1) matrix)
     
     constraints can be added as follow : (Wt.X.R)_i <= (>=) valBoud iff (Wt.X.R)_i!=0.
     The condition (Wt.X.R)_i!=0 means that this matrix element must be null whatever the value of X.
@@ -75,11 +75,108 @@ class Constraint() :
     The level of agreement between user preferences and final allocation (called happyness) is given by :
         h = Wt . X . R
     
-    ## prCat : the user give a preference on one of serveral possible outcome of a categorical property.
+    The options multi, removeSelf and roomTag have no effect in prBin constraints.
+    
+    ## prCat 
+    In the prCat constraint, the user give a preference on one of serveral possible outcome of a categorical property.
+    A single ressources only belongs to one category, which is present in the column with the labelled name.
+    If multi=False, users can only give weights to one category. The weights is taken from the column weightLabel and the choice of categor from label.
+    In case of multi option, the program searches for all occurences of labelI (with I integer) and sum the W matrices for each I.
+    
+    This case corresponds to the case where offices are splitted between N floors and users can give weights to their preferred floor.
+    
+    The objective function is the sum of weights of all users.
+    o =  W * ( X . R ) 
+    W is a (nUser x nCat ) matrix
+    R is a (nRessource x nCat matrix)
+    
+    The constraints are added as :   (W * (X . R ))_ij  <= (>=) valBound iff ( W * (X . R ))_ij!=0
+    
+    
+    h = sum_j ( (W * (X . R ))_ij )
+    
+    The options removeSelf and roomTag have no effect.
         
-        - prBinTag : the user has a preference of having a property within the structure to which its ressources belong.
+    
+    ## prBinTag
+    
+    prBinCat computes the amount of a users within a block of ressources tagged by roomTag.
+    This count is then multiplied by the weight attributed by the user.
+    A ressource can only belong to a single group.
+
+    
+    This case corresponds to the case where the user likes to have collegues in is room so has a positive happyness weight for each colleague.
+
+    o = sum_ij( Wt.X.R) ( - sum_i(W) if removeSelf )
+    W is a (nUser, 1) matrix
+    R is a (nRessources, nGroups ) matrix 
+    
+    Constraint : ( Wt.X.R)_ij <= (>=) valBound iff  != 0
+    
+    h = W * ( X.R . sum_i(X.R)t ) - (W if removeSelf)
+
+
+    ## General pp categories
+    
+    pp categories create a matching between a user and the ones sharing the ressources within the same bloc.
+    As such, the objective function is the product of an array containing the wishes of users per bloc and an array containing the actual user properties distribution per bloc.
+    However, such construvtion implies the multiplication of two terms which contain X and as such forbidden in linear programming.
+    Through additional variables and conditions, one is able to achieve such a product effectively.
+    
+    Consider w and d>=0, which contains variables on which the optimisation is performed, such that the objective function o = w*d.
+    Let b be a binary variable such that b=1 iff d>0.
+    This constraint is achievable by defining b a free binary variable and :
+        b >= d/K, with K strictly larger than any value than K can take in the problem.
+        b<=d
         
-        - ppCat
+    Let z = w iff d>0 else 0
+    This is achievable by creating z as a free continuous variable and 
+    z <= 2K + w - 2Kb
+    z >= w -2K + 2Kb
+    z <= dK
+    z >= -dK 
+ 
+    This solution is complicated in term of complexity as it creates 2 additionnal free variables per W matrix element.
+    As the optimisation algorithm is at worst exponential in term of number of variables, this can lead to huge computing time for large matrices (large number of users and/or number of categories).
+    
+    
+    ## ppBin
+    
+    In ppBin constraint, a user has a property and has a preference for having other users with similar properties within the same block of ressource.
+    The self property of the user must be in the inLabel column while its preference in weightlabel.
+    roomTag designate the distribution of ressources among blocs.
+    
+    In office allocation, it corresponds to people not wanting to be at the same room as people often on the phone.
+    Each user will have a property wether he is often on the phone or not, and a preference on the presence of phone users in the room.
+    
+    o = ( Wt.X.R) * ( Pt.X.R)
+    W is (nUser, 1)
+    P is a (nUser, 1) matrix which define wether a user i has the property 
+    R is (nRessource, nCateg)
+    
+    constraint : z<= valBound
+    
+    h = 
+    
+    ## ppCat
+    
+    In ppCat constraint, a user belongs to a category and has wishes concerning the presence of a given category in the same bloc.
+    The self property of the user must be in the inLabel column while its preference in weightlabel.
+    The category wished by the user is set in the labelled column.
+    roomTag designate the distribution of ressources among blocs.
+   
+    In office allocation, this corresponds to users which whish to be in the same room as other users. 
+    The categories then reffer to the users themselves.
+    
+    o = ( Wt.X.R) * ( Pt.X.R)
+    W is (nUser, nCat)
+    P is a (nUser, nCat) matrix which define wether a user i has the property 
+    R is (nRessource, nCat)
+    
+    constraint : z<= valBound
+    
+    h = 
+    
     """
     def __init__(self, typ, label
                  , maxWeights = False
@@ -127,7 +224,7 @@ class Constraint() :
         """
         if not self.maxWeights : return 0
         elif 'pp' in self.__type : return pulp.lpSum(self.prodVars )
-        elif  self.__type == 'prBinCat' : return  np.dot(self.wish.T, self.dispo ).sum() - ( self.wish if self.removeSelf else 0 )
+        elif  self.__type == 'prBinCat' : return  np.dot(self.wish.T, self.dispo ).sum() - ( self.wish.sum() if self.removeSelf else 0 )
         elif 'pr' in self.__type : return np.multiply(self.wish, self.dispo).sum()
         else : return 0
 
