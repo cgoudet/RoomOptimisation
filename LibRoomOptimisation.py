@@ -149,14 +149,17 @@ class Constraint() :
     In office allocation, it corresponds to people not wanting to be at the same room as people often on the phone.
     Each user will have a property wether he is often on the phone or not, and a preference on the presence of phone users in the room.
     
-    o = ( Wt.X.R) * ( Pt.X.R)
+    The removeSelf option allows to remove for one user's happyness level the happyness that might be generated if he posseses the corresponding characteristic.
+    It uses the column vector Pp which equal 0 is the user does not have the property and the weight the user attributes to this property otherwise.
+    
+    o = ( Wt.X.R) * ( Pt.X.R) [ - sum_i(Pp.X.R)  if removeSelf]
     W is (nUser, 1)
     P is a (nUser, 1) matrix which define wether a user i has the property 
     R is (nRessource, nCateg)
     
     constraint : z<= valBound
     
-    h = W * X.R.Rt.Xt.P
+    h = W * X.R.Rt.Xt.P [ - Pp if removeSelf]   
     
     ## ppCat
     
@@ -275,18 +278,6 @@ class Constraint() :
         return self
 
     #==========
-    def GetPPBinSelf( self, placement, officeData, persoData) :
-        """
-        Get the amount of happyness earned by users liking their own property.
-        """
-        Pp = np.diag( persoData.loc[:, self.inLabel]*persoData.loc[:, self.weightLabel])
-        
-        officeFilter = pd.pivot_table(officeData.loc[:,self.roomTag], columns=self.roomTag, index=officeData.index, aggfunc=len).fillna(0)
-        officeFilter = np.dot(placement, officeFilter)
-        
-        return np.dot( Pp, officeFilter)
-        
-    #==========
     def DefinePPBinConstraint( self, placement, officeData, persoData ) :
         """
         Fills the wish and dispo for ppBin constraint.
@@ -304,9 +295,8 @@ class Constraint() :
         self.wish = np.array([np.dot( persoData[self.weightLabel].values.T, officeFilter )])
     
         if self.removeSelf : 
-            selfLike = self.GetPPBinSelf( placement, officeData, persoData )
-            print( selfLike.sum(0) )
-            self.wish -= selfLike.sum(0)
+            Pp = np.diag( persoData.loc[:, self.inLabel]*persoData.loc[:, self.weightLabel])
+            self.wish -= np.dot( Pp, officeFilter).sum(0)
         
         self.dispo = persoData[self.inLabel]
         self.dispo = np.array([np.dot( self.dispo.T, officeFilter )])
@@ -508,7 +498,7 @@ class Constraint() :
         
         if self.__type == 'ppBin' : 
             self.wish = persoData.loc[:, [self.weightLabel]].values
-            persoFilter =np.array([ persoData[self.inLabel]]).T
+            persoFilter =np.array([persoData[self.inLabel]]).T
             
             if self.removeSelf :
                 Pp = persoData.loc[:, self.weightLabel]*persoData.loc[:, self.inLabel]
@@ -1164,14 +1154,6 @@ class TestConstraint( unittest.TestCase ):
     # PPBIN
     # 
     # =============================================================================
-    def test_GetPPBinSelf( self ) :
-        cons = Constraint( 'ppBin', 'phone', roomTag=['etage'], maxWeights=True )
-        
-        selfHappy = cons.GetPPBinSelf( self.placement, self.officeData, self.persoData )
-        
-        self.assertTrue(np.allclose( [[0, 0], [0, 0], [0, 1]], selfHappy, rtol=1e-05, atol=1e-08))
-    
-    #==========
     def test_DefinePPBinConstraint_resultInput(self) :
         cons = Constraint( 'ppBin', 'phone', roomTag=['etage'], maxWeights=True)
         cons.DefinePPBinConstraint( self.placement, self.officeData, self.persoData )
