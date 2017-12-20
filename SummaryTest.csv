@@ -12,7 +12,7 @@ Status Infeas,1,1,1,1,1
 Placement Max,1,1,1,1,1
 Placement Constraint,1,1,1,1,1
 multi,-,-,1,1,-
-negative  dispo,,1,-,-,-
-Non 1 weights dispo,,1,-,-,-
-removeSelf,,-,-,,
-NegNeg ,,1,-,-,-
+negative  dispo,-,1,-,-,-
+Non 1 weights dispo,1,1,-,-,-
+removeSelf,,-,-,1,1
+NegNeg ,-,1,-,-,-

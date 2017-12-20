@@ -178,7 +178,7 @@ class Constraint() :
     
     constraint : z<= valBound
     
-    h = W * E.R.Rt.Xt.P
+    h = W * X.R.Rt.Xt.P [ -Pp if removeSelf ]
     
     """
     def __init__(self, typ, label
@@ -338,17 +338,9 @@ class Constraint() :
         self.wish = np.dot( persoFilter.values.T, officeFilter)
         if self.removeSelf : 
             selfLike = np.multiply( persoFilter, persoInOption )
-            print( 'selfLike : ', selfLike)
-           # selfLike = np.dot(.T , officeFilter)
-#            print( 'perso : ', persoInOption )
-#            selfLike = np.dot( persoInOption.T, selfLike )
-#            print( 'selfLikePerso : ', selfLike)
-            print( 'office : ', officeFilter )
             selfLike = np.dot( selfLike.T, officeFilter )
-            print( 'selfLikeOffice : ', selfLike)
-            print( 'wishB : ', self.wish )
             self.wish -= selfLike
-            print( 'wishAft : ', self.wish )
+
 
     #==========
     def DefinePRBinCatConstraint(self, placement, officeData, persoData ) :
@@ -524,12 +516,6 @@ class Constraint() :
         if self.__type == 'ppBin' : 
             self.wish = persoData.loc[:, [self.weightLabel]].values
             persoFilter =np.array([persoData[self.inLabel]]).T
-            
-            if self.removeSelf :
-                Pp = persoData.loc[:, self.weightLabel]*persoData.loc[:, self.inLabel]
-                Pp = np.array([Pp.values]).T
-                self.wish -= Pp
-
 
         else :
             suffix = self.GetColumnsOption(persoData) if self.multi else ['']
@@ -550,7 +536,12 @@ class Constraint() :
         self.dispo = np.dot( self.dispo, placement.T)
         self.dispo = np.dot( self.dispo, persoFilter)
 
-        return np.multiply(self.wish, self.dispo).sum(1)
+    
+        if self.removeSelf : self.dispo = np.subtract(self.dispo, persoFilter)
+
+        if self.__type == 'ppCat' : return MultiplyWithFilter( self.wish, self.dispo).sum(1)
+        else : return np.multiply(self.wish, self.dispo).sum(1)
+
 
 
 #===========
@@ -1233,6 +1224,7 @@ class TestConstraint( unittest.TestCase ):
 
     #==========
     def test_DefinePPBinConstraint_resultInputRemoveSelf(self) :
+        print('startRemoveSelf')
         cons = Constraint( 'ppBin', 'phone', roomTag=['etage'], maxWeights=True, removeSelf=True)
         cons.DefinePPBinConstraint( self.placement, self.officeData, self.persoData )
 
@@ -1241,6 +1233,7 @@ class TestConstraint( unittest.TestCase ):
 
         self.assertAlmostEqual(-2, cons.GetObjVal() )
         hap = cons.GetPPHappyness(self.placement, self.officeData, self.persoData )
+        print('hap : ', hap)
         self.assertTrue(np.allclose([-2, 0, 0], hap , rtol=1e-05, atol=1e-08))
 
     #==========
