@@ -100,8 +100,7 @@ class Constraint() :
     
     ## prBinCat
     
-    prBinCat computes the amount of a users within a block of ressources tagged by roomTag.
-    This count is then multiplied by the weight attributed by the user.
+    prBinCat computes the total user weights per block of ressources tagged by roomTag.
     A ressource can only belong to a single group.
 
     
@@ -113,8 +112,9 @@ class Constraint() :
     
     Constraint : ( Wt.X.R)_j <= (>=) valBound iff  != 0
     
-    h = W * ( X.R . sum_i(X.R)t ) 
+    h = W 
 
+    The options multi and removeSelf have no effect
 
     ## General pp categories
     
@@ -156,7 +156,7 @@ class Constraint() :
     
     constraint : z<= valBound
     
-    h = W * E.R.Rt.Xt.P
+    h = W * X.R.Rt.Xt.P
     
     ## ppCat
     
@@ -224,7 +224,7 @@ class Constraint() :
         """
         if not self.maxWeights : return 0
         elif 'pp' in self.__type : return pulp.lpSum(self.prodVars )
-        elif  self.__type == 'prBinCat' : return  np.dot(self.wish.T, self.dispo ).sum() - ( self.wish.sum() if self.removeSelf else 0 )
+        elif  self.__type == 'prBinCat' : return  np.dot(self.wish.T, self.dispo ).sum() 
         elif 'pr' in self.__type : return np.multiply(self.wish, self.dispo).sum()
         else : return 0
 
@@ -274,7 +274,18 @@ class Constraint() :
         self.posDispo = pulp.LpVariable.matrix( self.label+'PosDispo', (np.arange(s[0]), np.arange(s[1])), cat='Continuous' )
         return self
 
-
+    #==========
+    def GetPPBinSelf( self, placement, officeData, persoData) :
+        """
+        Get the amount of happyness earned by users liking their own property.
+        """
+        Pp = np.diag( persoData.loc[:, self.inLabel]*persoData.loc[:, self.weightLabel])
+        
+        officeFilter = pd.pivot_table(officeData.loc[:,self.roomTag], columns=self.roomTag, index=officeData.index, aggfunc=len).fillna(0)
+        officeFilter = np.dot(placement, officeFilter)
+        
+        return np.dot( Pp, officeFilter)
+        
     #==========
     def DefinePPBinConstraint( self, placement, officeData, persoData ) :
         """
@@ -289,8 +300,14 @@ class Constraint() :
         officeFilter = pd.pivot_table(officeData.loc[:,self.roomTag], columns=self.roomTag, index=officeData.index, aggfunc=len).fillna(0)
         officeFilter = np.dot(placement, officeFilter)
     
+        
         self.wish = np.array([np.dot( persoData[self.weightLabel].values.T, officeFilter )])
-
+    
+        if self.removeSelf : 
+            selfLike = self.GetPPBinSelf( placement, officeData, persoData )
+            print( selfLike.sum(0) )
+            self.wish -= selfLike.sum(0)
+        
         self.dispo = persoData[self.inLabel]
         self.dispo = np.array([np.dot( self.dispo.T, officeFilter )])
 
@@ -315,6 +332,7 @@ class Constraint() :
         #self property of each person
         persoInOption = pd.pivot_table( persoData.loc[:, [self.inLabel]], columns=[self.inLabel], index=persoData.index, aggfunc=len).fillna(0)
         persoInOption = persoInOption[commonLabels].values
+        
 
         #weight for preferences of each person
         persoFilter = pd.DataFrame()
@@ -472,16 +490,8 @@ class Constraint() :
         Return the level of happyness of users for prBinCat constraints
         """
 
-        self.DefinePRBinCatConstraint( placement, officeData, persoData )
-        persoFilter = persoData.loc[:,self.label]
-        officeFilter = pd.pivot_table(officeData.loc[:,self.roomTag], columns=self.roomTag, index=officeData.index, aggfunc=len).fillna(0)
-
-        self.wish = persoFilter
-        self.dispo = np.dot( placement, officeFilter ).sum(0)
-        self.dispo = np.dot( officeFilter, self.dispo.T )
-        self.dispo = np.dot( placement, self.dispo )
-        return np.multiply( self.wish, self.dispo ) - ( self.wish if self.removeSelf else 0 )
-
+        return persoData.loc[:,self.label]
+    
     #==========
     def GetPRHappyness( self, placement, officeData, persoData ) :
         if self.__type == 'prBin' :
@@ -497,8 +507,15 @@ class Constraint() :
         persoFilter = None 
         
         if self.__type == 'ppBin' : 
-            self.wish = persoData.loc[:, [self.weightLabel]]
+            self.wish = persoData.loc[:, [self.weightLabel]].values
             persoFilter =np.array([ persoData[self.inLabel]]).T
+            
+            if self.removeSelf :
+                Pp = persoData.loc[:, self.weightLabel]*persoData.loc[:, self.inLabel]
+                Pp = np.array([Pp.values]).T
+                self.wish -= Pp
+
+
         else :
             suffix = self.GetColumnsOption(persoData) if self.multi else ['']
             usedOptions = [ self.label + str(x) for x in suffix] 
@@ -866,6 +883,7 @@ class TestConstraint( unittest.TestCase ):
     # =============================================================================
 
     def test_DefinePRBinCatConstraint_resultInput(self) :
+       
         self.persoData['table'] = [2, 3, 0]
         cons = Constraint( 'prBinCat', 'table', True, roomTag=['table'] )
         cons.DefinePRBinCatConstraint( self.placement, self.officeData, self.persoData )
@@ -876,7 +894,7 @@ class TestConstraint( unittest.TestCase ):
         self.assertAlmostEqual(5.0, cons.GetObjVal() )
 
         hap = cons.GetPRBinCatHappyness(np.diag([1, 1, 1]), self.officeData, self.persoData )
-        self.assertTrue(np.allclose([4,6, 0], hap , rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose([2, 3, 0], hap , rtol=1e-05, atol=1e-08))
 
 
     def test_DefinePRBinCatConstraint_resultConsUp(self) :
@@ -1055,8 +1073,7 @@ class TestConstraint( unittest.TestCase ):
         # =============================================================================
         #         PPCAT
         #
-        # =============================================================================
-
+        # =============================================================================        
     def test_DefinePPCatConstraint_resultInput(self) :
         cons = Constraint( 'ppCat', 'service', True, roomTag=['etage'] )
         cons.DefinePPConstraint(self.placement, self.officeData, self.persoData )
@@ -1147,16 +1164,36 @@ class TestConstraint( unittest.TestCase ):
     # PPBIN
     # 
     # =============================================================================
+    def test_GetPPBinSelf( self ) :
+        cons = Constraint( 'ppBin', 'phone', roomTag=['etage'], maxWeights=True )
+        
+        selfHappy = cons.GetPPBinSelf( self.placement, self.officeData, self.persoData )
+        
+        self.assertTrue(np.allclose( [[0, 0], [0, 0], [0, 1]], selfHappy, rtol=1e-05, atol=1e-08))
+    
+    #==========
     def test_DefinePPBinConstraint_resultInput(self) :
         cons = Constraint( 'ppBin', 'phone', roomTag=['etage'], maxWeights=True)
         cons.DefinePPBinConstraint( self.placement, self.officeData, self.persoData )
-
+        
         self.assertTrue(np.allclose( [-2, 1], cons.wish, rtol=1e-05, atol=1e-08))
         self.assertTrue(np.allclose( [1, 1], cons.dispo, rtol=1e-05, atol=1e-08))
 
         self.assertAlmostEqual(-1, cons.GetObjVal() )
         hap = cons.GetPPHappyness(self.placement, self.officeData, self.persoData )
         self.assertTrue(np.allclose([-2, 0, 1], hap , rtol=1e-05, atol=1e-08))
+
+    #==========
+    def test_DefinePPBinConstraint_resultInputRemoveSelf(self) :
+        cons = Constraint( 'ppBin', 'phone', roomTag=['etage'], maxWeights=True, removeSelf=True)
+        cons.DefinePPBinConstraint( self.placement, self.officeData, self.persoData )
+
+        self.assertTrue(np.allclose( [-2, 0], cons.wish, rtol=1e-05, atol=1e-08))
+        self.assertTrue(np.allclose( [1, 1], cons.dispo, rtol=1e-05, atol=1e-08))
+
+        self.assertAlmostEqual(-2, cons.GetObjVal() )
+        hap = cons.GetPPHappyness(self.placement, self.officeData, self.persoData )
+        self.assertTrue(np.allclose([-2, 0, 0], hap , rtol=1e-05, atol=1e-08))
 
     #==========
     def test_DefinePPBinConstraint_resultNegDispo(self) :
