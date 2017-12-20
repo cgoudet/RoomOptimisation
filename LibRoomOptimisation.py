@@ -98,22 +98,22 @@ class Constraint() :
     The options removeSelf and roomTag have no effect.
         
     
-    ## prBinTag
+    ## prBinCat
     
     prBinCat computes the amount of a users within a block of ressources tagged by roomTag.
     This count is then multiplied by the weight attributed by the user.
     A ressource can only belong to a single group.
 
     
-    This case corresponds to the case where the user likes to have collegues in is room so has a positive happyness weight for each colleague.
+    This corresponds to the case where the user likes to have collegues in is room so has a positive happyness weight for each colleague.
 
-    o = sum_ij( Wt.X.R) ( - sum_i(W) if removeSelf )
+    o = sum_j( Wt.X.R) (constant)
     W is a (nUser, 1) matrix
     R is a (nRessources, nGroups ) matrix 
     
-    Constraint : ( Wt.X.R)_ij <= (>=) valBound iff  != 0
+    Constraint : ( Wt.X.R)_j <= (>=) valBound iff  != 0
     
-    h = W * ( X.R . sum_i(X.R)t ) - (W if removeSelf)
+    h = W * ( X.R . sum_i(X.R)t ) 
 
 
     ## General pp categories
@@ -156,7 +156,7 @@ class Constraint() :
     
     constraint : z<= valBound
     
-    h = 
+    h = W * E.R.Rt.Xt.P
     
     ## ppCat
     
@@ -165,7 +165,7 @@ class Constraint() :
     The category wished by the user is set in the labelled column.
     roomTag designate the distribution of ressources among blocs.
    
-    In office allocation, this corresponds to users which whish to be in the same room as other users. 
+    In office allocation, this corresponds to users who wish to be in the same room as another users. 
     The categories then reffer to the users themselves.
     
     o = ( Wt.X.R) * ( Pt.X.R)
@@ -175,7 +175,7 @@ class Constraint() :
     
     constraint : z<= valBound
     
-    h = 
+    h = W * E.R.Rt.Xt.P
     
     """
     def __init__(self, typ, label
@@ -1139,6 +1139,8 @@ class TestConstraint( unittest.TestCase ):
         self.assertAlmostEqual(0, pulp.value(cons.GetObjVal()) )
         x = ArrayFromPulpMatrix2D( self.pulpVars )
         self.assertAlmostEqual(x[2][2], 1 )
+
+
 
     # =============================================================================
     # 
