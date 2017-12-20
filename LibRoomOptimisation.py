@@ -1103,9 +1103,6 @@ class TestConstraint( unittest.TestCase ):
         self.assertTrue(np.allclose([3,0, 0], hap , rtol=1e-05, atol=1e-08))
 
     def test_DefinePPCatConstraint_resultInputRemoveSelf(self) :
-        print('startService')
-        print('\n', self.persoData[['service', 'weightService', 'inService']])
-        print('\n', self.officeData['etage'])
         cons = Constraint( 'ppCat', 'service', True, roomTag=['etage'], removeSelf=True )
         cons.DefinePPConstraint(self.placement, self.officeData, self.persoData )
 
@@ -1145,10 +1142,8 @@ class TestConstraint( unittest.TestCase ):
         self.assertTrue(np.allclose([3,0, 0], hap , rtol=1e-05, atol=1e-08))
 
     def test_DefinePPCatConstraint_resultMultiRemoveSelf(self) :
-        print('startPerso')
         self.persoData['perso1'] = ['Dum2', 'Dum1', 'Dum2']
         self.persoData.loc[1, 'perso0'] = 'Dum1'
-        print('\n', self.persoData)
         cons = Constraint( 'ppCat', 'perso', True, roomTag=['etage'], multi=True, removeSelf=True )
         cons.DefinePPConstraint(self.placement, self.officeData, self.persoData )
 
@@ -1224,7 +1219,6 @@ class TestConstraint( unittest.TestCase ):
 
     #==========
     def test_DefinePPBinConstraint_resultInputRemoveSelf(self) :
-        print('startRemoveSelf')
         cons = Constraint( 'ppBin', 'phone', roomTag=['etage'], maxWeights=True, removeSelf=True)
         cons.DefinePPBinConstraint( self.placement, self.officeData, self.persoData )
 
@@ -1233,7 +1227,6 @@ class TestConstraint( unittest.TestCase ):
 
         self.assertAlmostEqual(-2, cons.GetObjVal() )
         hap = cons.GetPPHappyness(self.placement, self.officeData, self.persoData )
-        print('hap : ', hap)
         self.assertTrue(np.allclose([-2, 0, 0], hap , rtol=1e-05, atol=1e-08))
 
     #==========
